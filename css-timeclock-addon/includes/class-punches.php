@@ -55,7 +55,7 @@ class Css_Tc_Punches {
 		foreach ( $query->posts as $post ) {
 			$clock_in  = get_post_meta( $post->ID, 'employee_clock_in_time', true );
 			$clock_out = get_post_meta( $post->ID, 'employee_clock_out_time', true );
-			if ( ! empty( $clock_in ) && ( empty( $clock_out ) || '' === $clock_out ) ) {
+			if ( $this->is_open_shift_meta( $clock_in, $clock_out ) ) {
 				$result['open_shift_id'] = (int) $post->ID;
 				$result['is_clocked_in'] = true;
 				$result['clock_in_time'] = $this->format_time( (string) $clock_in );
@@ -100,7 +100,9 @@ class Css_Tc_Punches {
 		}
 
 		update_post_meta( $shift_id, 'employee_clock_in_time', $now );
-		update_post_meta( $shift_id, 'employee_clock_out_time', null );
+		// Empty string, not null: update_post_meta( ..., null ) stores SQL NULL,
+		// which WP_Query meta_query (NOT EXISTS OR = '') will not match.
+		update_post_meta( $shift_id, 'employee_clock_out_time', '' );
 
 		$department = css_tc_addon()->employees->department( $user_id );
 		if ( '' !== $department ) {
@@ -175,7 +177,26 @@ class Css_Tc_Punches {
 	}
 
 	/**
+	 * Whether clock-in / clock-out meta describes an open shift.
+	 *
+	 * Same rule as AIO monitoring and open_shift_for(): clock-in is set and
+	 * clock-out is empty. PHP empty() treats '', null, and missing values as
+	 * empty. Do not replace this with a WP_Query empty-string meta_query —
+	 * rows stored as SQL NULL (from update_post_meta( ..., null )) exist in
+	 * postmeta but match neither NOT EXISTS nor meta_value = ''.
+	 *
+	 * @param mixed $clock_in  employee_clock_in_time meta.
+	 * @param mixed $clock_out employee_clock_out_time meta.
+	 * @return bool
+	 */
+	public function is_open_shift_meta( $clock_in, $clock_out ) {
+		return ( ! empty( $clock_in ) && ( empty( $clock_out ) || '' === $clock_out ) );
+	}
+
+	/**
 	 * Open shifts keyed by employee user ID (AIO: clock-in set, clock-out empty).
+	 *
+	 * Loads recent shift posts, then filters in PHP with is_open_shift_meta().
 	 *
 	 * @return array<int,array{clock_in_time:string}>
 	 */
@@ -188,26 +209,6 @@ class Css_Tc_Punches {
 				'orderby'        => 'ID',
 				'order'          => 'DESC',
 				'no_found_rows'  => true,
-				'meta_query'     => array(
-					'relation' => 'AND',
-					array(
-						'key'     => 'employee_clock_in_time',
-						'value'   => '',
-						'compare' => '!=',
-					),
-					array(
-						'relation' => 'OR',
-						array(
-							'key'     => 'employee_clock_out_time',
-							'compare' => 'NOT EXISTS',
-						),
-						array(
-							'key'     => 'employee_clock_out_time',
-							'value'   => '',
-							'compare' => '=',
-						),
-					),
-				),
 			)
 		);
 
@@ -222,7 +223,7 @@ class Css_Tc_Punches {
 
 				$clock_in  = get_post_meta( $post->ID, 'employee_clock_in_time', true );
 				$clock_out = get_post_meta( $post->ID, 'employee_clock_out_time', true );
-				if ( empty( $clock_in ) || ( ! empty( $clock_out ) && '' !== $clock_out ) ) {
+				if ( ! $this->is_open_shift_meta( $clock_in, $clock_out ) ) {
 					continue;
 				}
 
@@ -537,7 +538,7 @@ class Css_Tc_Punches {
 			update_post_meta( $shift_id, 'employee_clock_in_time', $clock_in );
 		}
 		if ( $clear_out ) {
-			update_post_meta( $shift_id, 'employee_clock_out_time', null );
+			update_post_meta( $shift_id, 'employee_clock_out_time', '' );
 		} elseif ( '' !== $clock_out ) {
 			update_post_meta( $shift_id, 'employee_clock_out_time', $clock_out );
 		}
@@ -590,7 +591,7 @@ class Css_Tc_Punches {
 		}
 
 		update_post_meta( $shift_id, 'employee_clock_in_time', $clock_in );
-		update_post_meta( $shift_id, 'employee_clock_out_time', '' === $clock_out ? null : $clock_out );
+		update_post_meta( $shift_id, 'employee_clock_out_time', '' === $clock_out ? '' : $clock_out );
 		update_post_meta( $shift_id, 'css_tc_original_clock_in', '' );
 		update_post_meta( $shift_id, 'css_tc_original_clock_out', '' );
 		add_post_meta( $shift_id, 'css_tc_kiosk_source', 'correction', true );

@@ -131,6 +131,13 @@
     this.timer = window.setInterval(this.refresh.bind(this), interval);
   }
 
+  StatusBoard.prototype.apply = function (data) {
+    if (!$(this.root, '[data-role="board"]')) {
+      return;
+    }
+    renderBoard(this.root, data || {});
+  };
+
   StatusBoard.prototype.refresh = function () {
     var self = this;
     if (!$(this.root, '[data-role="board"]')) {
@@ -144,7 +151,7 @@
     post("css_tc_roster", { kiosk: this.root.getAttribute("data-kiosk") || "pin" })
       .then(function (data) {
         self.loading = false;
-        renderBoard(self.root, data || {});
+        self.apply(data || {});
         if (self.queued) {
           self.queued = false;
           self.refresh();
@@ -329,6 +336,9 @@
       .then(function (data) {
         self.busy = false;
         self.showSuccess(data);
+        if (self.board && data.board && typeof self.board.apply === "function") {
+          self.board.apply(data.board);
+        }
         if (self.board && typeof self.board.refresh === "function") {
           self.board.refresh();
         }
