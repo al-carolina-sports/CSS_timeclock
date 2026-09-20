@@ -87,6 +87,10 @@ class Css_Tc_Admin {
 					'error'        => __( 'Something went wrong. Try again.', 'css-timeclock-addon' ),
 					'notSet'       => __( 'Not set', 'css-timeclock-addon' ),
 					'set'          => __( 'Set', 'css-timeclock-addon' ),
+					'confirmReject'=> __( 'Reject this suggestion? Punches will stay unchanged.', 'css-timeclock-addon' ),
+					'approved'     => __( 'Approved', 'css-timeclock-addon' ),
+					'rejected'     => __( 'Rejected', 'css-timeclock-addon' ),
+					'pending'      => __( 'Pending review', 'css-timeclock-addon' ),
 				),
 			)
 		);
@@ -103,12 +107,14 @@ class Css_Tc_Admin {
 		$settings  = css_tc_addon()->get_settings();
 		$employees = css_tc_addon()->employees->list_for_admin();
 		$tab       = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'settings'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		if ( ! in_array( $tab, array( 'settings', 'pins' ), true ) ) {
+		if ( ! in_array( $tab, array( 'settings', 'pins', 'corrections' ), true ) ) {
 			$tab = 'settings';
 		}
 
-		$pin_page  = ! empty( $settings['pin_kiosk_page_id'] ) ? get_permalink( (int) $settings['pin_kiosk_page_id'] ) : '';
-		$name_page = ! empty( $settings['name_kiosk_page_id'] ) ? get_permalink( (int) $settings['name_kiosk_page_id'] ) : '';
+		$pin_page   = ! empty( $settings['pin_kiosk_page_id'] ) ? get_permalink( (int) $settings['pin_kiosk_page_id'] ) : '';
+		$name_page  = ! empty( $settings['name_kiosk_page_id'] ) ? get_permalink( (int) $settings['name_kiosk_page_id'] ) : '';
+		$times_page = ! empty( $settings['employee_times_page_id'] ) ? get_permalink( (int) $settings['employee_times_page_id'] ) : '';
+		$queue      = css_tc_addon()->corrections->admin_queue();
 		$base_url = current_user_can( 'manage_options' )
 			? admin_url( 'options-general.php?page=css-tc-addon' )
 			: admin_url( 'admin.php?page=css-tc-addon' );

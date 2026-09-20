@@ -20,7 +20,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Css_Tc_Punches {
 
-	const POST_TYPE = 'shift';
+	const POST_TYPE        = 'shift';
+	const ROSTER_CACHE_KEY = 'css_tc_roster_public';
+	const ROSTER_CACHE_TTL = 8;
 
 	/**
 	 * @param int $user_id Employee user ID.
@@ -117,6 +119,8 @@ class Css_Tc_Punches {
 		 */
 		do_action( 'css_tc_after_clock_in', $shift_id, $user_id, $source );
 
+		$this->bust_roster_cache();
+
 		return array(
 			'action'        => 'clock_in',
 			'shift_id'      => (int) $shift_id,
@@ -158,6 +162,8 @@ class Css_Tc_Punches {
 		 */
 		do_action( 'css_tc_after_clock_out', $shift_id, $user_id, $source );
 
+		$this->bust_roster_cache();
+
 		return array(
 			'action'         => 'clock_out',
 			'shift_id'       => $shift_id,
@@ -166,6 +172,190 @@ class Css_Tc_Punches {
 			'clock_out_time' => $this->format_time( $now ),
 			'time_total'     => $this->elapsed_label( (string) $clock_in, $now ),
 		);
+	}
+
+	/**
+	 * Open shifts keyed by employee user ID (AIO: clock-in set, clock-out empty).
+	 *
+	 * @return array<int,array{clock_in_time:string}>
+	 */
+	public function open_shifts_by_author() {
+		$query = new WP_Query(
+			array(
+				'post_type'      => self::POST_TYPE,
+				'post_status'    => array( 'publish', 'private' ),
+				'posts_per_page' => 200,
+				'orderby'        => 'ID',
+				'order'          => 'DESC',
+				'no_found_rows'  => true,
+				'meta_query'     => array(
+					'relation' => 'AND',
+					array(
+						'key'     => 'employee_clock_in_time',
+						'value'   => '',
+						'compare' => '!=',
+					),
+					array(
+						'relation' => 'OR',
+						array(
+							'key'     => 'employee_clock_out_time',
+							'compare' => 'NOT EXISTS',
+						),
+						array(
+							'key'     => 'employee_clock_out_time',
+							'value'   => '',
+							'compare' => '=',
+						),
+					),
+				),
+			)
+		);
+
+		$map = array();
+
+		if ( $query->have_posts() ) {
+			foreach ( $query->posts as $post ) {
+				$author = (int) $post->post_author;
+				if ( $author < 1 || isset( $map[ $author ] ) ) {
+					continue;
+				}
+
+				$clock_in  = get_post_meta( $post->ID, 'employee_clock_in_time', true );
+				$clock_out = get_post_meta( $post->ID, 'employee_clock_out_time', true );
+				if ( empty( $clock_in ) || ( ! empty( $clock_out ) && '' !== $clock_out ) ) {
+					continue;
+				}
+
+				$map[ $author ] = array(
+					'clock_in_time' => $this->format_board_time( (string) $clock_in ),
+				);
+			}
+		}
+
+		wp_reset_postdata();
+
+		return $map;
+	}
+
+	/**
+	 * Public kiosk board: display names + in/out (+ clock-in time). No IDs, emails, or PINs.
+	 *
+	 * @return array{working:array<int,array<string,string>>,out:array<int,array<string,string>>,working_count:int,out_count:int,generated_at:string}
+	 */
+	public function public_board() {
+		$cached = get_transient( self::ROSTER_CACHE_KEY );
+		if ( is_array( $cached ) && isset( $cached['working'], $cached['out'] ) ) {
+			return $cached;
+		}
+
+		$employees = css_tc_addon()->employees->list_for_board();
+		$open      = $this->open_shifts_by_author();
+		$seen      = array();
+
+		foreach ( $employees as $emp ) {
+			$seen[ (int) $emp['id'] ] = true;
+		}
+
+		foreach ( $open as $user_id => $_shift ) {
+			if ( isset( $seen[ $user_id ] ) ) {
+				continue;
+			}
+			if ( ! css_tc_addon()->employees->is_employee( $user_id ) ) {
+				continue;
+			}
+			$employees[]        = array(
+				'id'   => (int) $user_id,
+				'name' => css_tc_addon()->employees->display_name( (int) $user_id ),
+			);
+			$seen[ $user_id ] = true;
+		}
+
+		usort(
+			$employees,
+			static function ( $a, $b ) {
+				return strcasecmp( (string) $a['name'], (string) $b['name'] );
+			}
+		);
+
+		$working = array();
+		$out     = array();
+
+		foreach ( $employees as $emp ) {
+			$id  = (int) $emp['id'];
+			$row = array(
+				'name' => (string) $emp['name'],
+			);
+			if ( isset( $open[ $id ] ) ) {
+				$row['clock_in_time'] = $open[ $id ]['clock_in_time'];
+				$working[]            = $row;
+			} else {
+				$out[] = $row;
+			}
+		}
+
+		$payload = array(
+			'working'       => $working,
+			'out'           => $out,
+			'working_count' => count( $working ),
+			'out_count'     => count( $out ),
+			'generated_at'  => $this->format_board_now(),
+		);
+
+		/**
+		 * Filter the public kiosk status board payload (names and in/out only).
+		 *
+		 * @param array<string,mixed> $payload Board payload.
+		 */
+		$payload = apply_filters( 'css_tc_public_board', $payload );
+
+		set_transient( self::ROSTER_CACHE_KEY, $payload, self::ROSTER_CACHE_TTL );
+
+		return $payload;
+	}
+
+	/**
+	 * Drop the short-lived public board cache after a punch.
+	 *
+	 * @return void
+	 */
+	public function bust_roster_cache() {
+		delete_transient( self::ROSTER_CACHE_KEY );
+	}
+
+	/**
+	 * Clock-in time for the kiosk board: time only when it is today.
+	 *
+	 * @param string $mysql_datetime Datetime string.
+	 * @return string
+	 */
+	public function format_board_time( $mysql_datetime ) {
+		$ts = strtotime( $mysql_datetime );
+		if ( ! $ts ) {
+			return $mysql_datetime;
+		}
+
+		$time_format = get_option( 'time_format', 'g:i a' );
+		$date_format = get_option( 'date_format', 'Y-m-d' );
+		if ( function_exists( 'wp_date' ) ) {
+			$same_day = ( wp_date( 'Y-m-d', $ts ) === wp_date( 'Y-m-d' ) );
+			$format   = $same_day ? $time_format : ( $date_format . ' ' . $time_format );
+			return wp_date( $format, $ts );
+		}
+
+		$same_day = ( date_i18n( 'Y-m-d', $ts ) === date_i18n( 'Y-m-d' ) );
+		$format   = $same_day ? $time_format : ( $date_format . ' ' . $time_format );
+		return date_i18n( $format, $ts );
+	}
+
+	/**
+	 * @return string
+	 */
+	private function format_board_now() {
+		$format = get_option( 'time_format', 'g:i a' );
+		if ( function_exists( 'wp_date' ) ) {
+			return wp_date( $format );
+		}
+		return date_i18n( $format );
 	}
 
 	/**
@@ -198,11 +388,344 @@ class Css_Tc_Punches {
 	}
 
 	/**
+	 * Recent calendar days for the employee dashboard, newest first.
+	 *
+	 * @param int $user_id Employee user ID.
+	 * @param int $days    Inclusive lookback (today counts as day 1).
+	 * @return array<int,array<string,mixed>>
+	 */
+	public function calendar_days_for_user( $user_id, $days = 21 ) {
+		$user_id = (int) $user_id;
+		$days    = min( 60, max( 7, (int) $days ) );
+		$today   = $this->site_date();
+		$start   = $this->shift_date( $today, 1 - $days );
+
+		$shifts  = $this->shifts_since( $user_id, $start );
+		$by_date = array();
+
+		for ( $i = 0; $i < $days; $i++ ) {
+			$date             = $this->shift_date( $today, -$i );
+			$by_date[ $date ] = array();
+		}
+
+		foreach ( $shifts as $shift ) {
+			$date = substr( (string) $shift['clock_in_raw'], 0, 10 );
+			if ( ! isset( $by_date[ $date ] ) ) {
+				continue;
+			}
+			$by_date[ $date ][] = $shift;
+		}
+
+		$result = array();
+		foreach ( $by_date as $date => $list ) {
+			$result[] = array(
+				'date'       => $date,
+				'date_label' => $this->format_day_label( $date ),
+				'weekday'    => $this->format_weekday( $date ),
+				'is_today'   => ( $date === $today ),
+				'shifts'     => $list,
+			);
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Shifts for one employee whose clock-in is on or after $start_date.
+	 *
+	 * @param int    $user_id    Employee user ID.
+	 * @param string $start_date Y-m-d.
+	 * @return array<int,array<string,mixed>>
+	 */
+	public function shifts_since( $user_id, $start_date ) {
+		$user_id    = (int) $user_id;
+		$start_date = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $start_date ) ? $start_date : $this->site_date();
+
+		$query = new WP_Query(
+			array(
+				'post_type'      => self::POST_TYPE,
+				'author'         => $user_id,
+				'post_status'    => array( 'publish', 'private' ),
+				'posts_per_page' => 100,
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+				'no_found_rows'  => true,
+				'meta_query'     => array(
+					array(
+						'key'     => 'employee_clock_in_time',
+						'value'   => $start_date . ' 00:00:00',
+						'compare' => '>=',
+					),
+				),
+			)
+		);
+
+		$shifts = array();
+		if ( $query->have_posts() ) {
+			foreach ( $query->posts as $post ) {
+				$row = $this->shift_row( $post );
+				if ( $row ) {
+					$shifts[] = $row;
+				}
+			}
+		}
+
+		wp_reset_postdata();
+
+		return $shifts;
+	}
+
+	/**
+	 * @param WP_Post $post Shift post.
+	 * @return array<string,mixed>|null
+	 */
+	public function shift_row( $post ) {
+		if ( ! $post || self::POST_TYPE !== $post->post_type ) {
+			return null;
+		}
+
+		$clock_in  = (string) get_post_meta( $post->ID, 'employee_clock_in_time', true );
+		$clock_out = (string) get_post_meta( $post->ID, 'employee_clock_out_time', true );
+		if ( '' === $clock_in ) {
+			return null;
+		}
+
+		$is_open = ( '' === $clock_out );
+		return array(
+			'id'              => (int) $post->ID,
+			'clock_in_raw'    => $clock_in,
+			'clock_out_raw'   => $is_open ? '' : $clock_out,
+			'clock_in'        => $this->format_time( $clock_in ),
+			'clock_out'       => $is_open ? '' : $this->format_time( $clock_out ),
+			'clock_in_hm'     => $this->format_hour_minute( $clock_in ),
+			'clock_out_hm'    => $is_open ? '' : $this->format_hour_minute( $clock_out ),
+			'out_next_day'    => ( ! $is_open && substr( $clock_out, 0, 10 ) !== substr( $clock_in, 0, 10 ) ),
+			'time_total'      => $is_open ? '' : $this->elapsed_label( $clock_in, $clock_out ),
+			'is_open'         => $is_open,
+		);
+	}
+
+	/**
+	 * Apply approved times to an existing AIO-compatible shift. Stores first-original audit.
+	 *
+	 * @param int    $shift_id  Shift post ID.
+	 * @param int    $user_id   Expected author.
+	 * @param string $clock_in  Y-m-d H:i:s or empty to keep.
+	 * @param string $clock_out Y-m-d H:i:s or empty to keep (or clear if $clear_out).
+	 * @param bool   $clear_out Whether to empty clock-out.
+	 * @param array<string,mixed> $audit Audit fields.
+	 * @return array<string,mixed>|WP_Error
+	 */
+	public function apply_times( $shift_id, $user_id, $clock_in, $clock_out, $clear_out = false, $audit = array() ) {
+		$shift_id = (int) $shift_id;
+		$user_id  = (int) $user_id;
+		$post     = get_post( $shift_id );
+
+		if ( ! $post || self::POST_TYPE !== $post->post_type || (int) $post->post_author !== $user_id ) {
+			return new WP_Error( 'css_tc_bad_shift', __( 'That shift could not be updated.', 'css-timeclock-addon' ) );
+		}
+
+		$old_in  = (string) get_post_meta( $shift_id, 'employee_clock_in_time', true );
+		$old_out = (string) get_post_meta( $shift_id, 'employee_clock_out_time', true );
+
+		if ( ! get_post_meta( $shift_id, 'css_tc_original_clock_in', true ) ) {
+			update_post_meta( $shift_id, 'css_tc_original_clock_in', $old_in );
+			update_post_meta( $shift_id, 'css_tc_original_clock_out', $old_out );
+		}
+
+		if ( '' !== $clock_in ) {
+			update_post_meta( $shift_id, 'employee_clock_in_time', $clock_in );
+		}
+		if ( $clear_out ) {
+			update_post_meta( $shift_id, 'employee_clock_out_time', null );
+		} elseif ( '' !== $clock_out ) {
+			update_post_meta( $shift_id, 'employee_clock_out_time', $clock_out );
+		}
+
+		if ( ! empty( $audit['correction_id'] ) ) {
+			update_post_meta( $shift_id, 'css_tc_last_correction_id', (int) $audit['correction_id'] );
+		}
+		if ( ! empty( $audit['suggested_by'] ) ) {
+			update_post_meta( $shift_id, 'css_tc_corrected_by', (int) $audit['suggested_by'] );
+		}
+		if ( ! empty( $audit['approved_by'] ) ) {
+			update_post_meta( $shift_id, 'css_tc_approved_by', (int) $audit['approved_by'] );
+		}
+		update_post_meta( $shift_id, 'css_tc_approved_at', $this->current_mysql_time() );
+
+		$this->bust_roster_cache();
+
+		$fresh = get_post( $shift_id );
+		$row   = $this->shift_row( $fresh );
+		return $row ? $row : new WP_Error( 'css_tc_bad_shift', __( 'That shift could not be updated.', 'css-timeclock-addon' ) );
+	}
+
+	/**
+	 * Create a shift from an approved missing-punch suggestion.
+	 *
+	 * @param int    $user_id   Employee user ID.
+	 * @param string $clock_in  Y-m-d H:i:s.
+	 * @param string $clock_out Y-m-d H:i:s or empty.
+	 * @param array<string,mixed> $audit Audit fields.
+	 * @return array<string,mixed>|WP_Error
+	 */
+	public function create_corrected_shift( $user_id, $clock_in, $clock_out = '', $audit = array() ) {
+		$user_id = (int) $user_id;
+		if ( $user_id < 1 || '' === $clock_in ) {
+			return new WP_Error( 'css_tc_bad_shift', __( 'A clock-in time is required to add a shift.', 'css-timeclock-addon' ) );
+		}
+
+		$shift_id = wp_insert_post(
+			array(
+				'post_type'   => self::POST_TYPE,
+				'post_title'  => 'Employee Shift',
+				'post_status' => 'publish',
+				'post_author' => $user_id,
+			),
+			true
+		);
+
+		if ( is_wp_error( $shift_id ) ) {
+			return $shift_id;
+		}
+
+		update_post_meta( $shift_id, 'employee_clock_in_time', $clock_in );
+		update_post_meta( $shift_id, 'employee_clock_out_time', '' === $clock_out ? null : $clock_out );
+		update_post_meta( $shift_id, 'css_tc_original_clock_in', '' );
+		update_post_meta( $shift_id, 'css_tc_original_clock_out', '' );
+		add_post_meta( $shift_id, 'css_tc_kiosk_source', 'correction', true );
+		add_post_meta( $shift_id, 'css_tc_created_from_correction', '1', true );
+
+		$department = css_tc_addon()->employees->department( $user_id );
+		if ( '' !== $department ) {
+			add_post_meta( $shift_id, 'department', $department, true );
+		}
+
+		if ( ! empty( $audit['correction_id'] ) ) {
+			update_post_meta( $shift_id, 'css_tc_last_correction_id', (int) $audit['correction_id'] );
+		}
+		if ( ! empty( $audit['suggested_by'] ) ) {
+			update_post_meta( $shift_id, 'css_tc_corrected_by', (int) $audit['suggested_by'] );
+		}
+		if ( ! empty( $audit['approved_by'] ) ) {
+			update_post_meta( $shift_id, 'css_tc_approved_by', (int) $audit['approved_by'] );
+		}
+		update_post_meta( $shift_id, 'css_tc_approved_at', $this->current_mysql_time() );
+
+		$this->bust_roster_cache();
+
+		$row = $this->shift_row( get_post( $shift_id ) );
+		return $row ? $row : new WP_Error( 'css_tc_bad_shift', __( 'That shift could not be created.', 'css-timeclock-addon' ) );
+	}
+
+	/**
+	 * @param string $mysql_datetime Datetime string.
+	 * @return string
+	 */
+	public function format_hour_minute( $mysql_datetime ) {
+		$ts = strtotime( $mysql_datetime );
+		if ( ! $ts ) {
+			return '';
+		}
+		if ( function_exists( 'wp_date' ) ) {
+			return wp_date( 'H:i', $ts );
+		}
+		return date_i18n( 'H:i', $ts );
+	}
+
+	/**
+	 * @return string
+	 */
+	public function site_date() {
+		if ( function_exists( 'wp_date' ) ) {
+			return wp_date( 'Y-m-d' );
+		}
+		return date_i18n( 'Y-m-d' );
+	}
+
+	/**
+	 * @param string $date Y-m-d.
+	 * @param int    $offset_days Days to add (negative to subtract).
+	 * @return string
+	 */
+	public function shift_date( $date, $offset_days ) {
+		$ts = strtotime( $date . ' 12:00:00' );
+		if ( ! $ts ) {
+			$ts = time();
+		}
+		$ts += ( (int) $offset_days ) * DAY_IN_SECONDS;
+		if ( function_exists( 'wp_date' ) ) {
+			return wp_date( 'Y-m-d', $ts );
+		}
+		return date_i18n( 'Y-m-d', $ts );
+	}
+
+	/**
+	 * @param string $date Y-m-d.
+	 * @return string
+	 */
+	public function format_day_label( $date ) {
+		$ts = strtotime( $date . ' 12:00:00' );
+		$format = get_option( 'date_format', 'Y-m-d' );
+		if ( function_exists( 'wp_date' ) ) {
+			return wp_date( $format, $ts );
+		}
+		return date_i18n( $format, $ts );
+	}
+
+	/**
+	 * @param string $date Y-m-d.
+	 * @return string
+	 */
+	public function format_weekday( $date ) {
+		$ts = strtotime( $date . ' 12:00:00' );
+		if ( function_exists( 'wp_date' ) ) {
+			return wp_date( 'l', $ts );
+		}
+		return date_i18n( 'l', $ts );
+	}
+
+	/**
+	 * Combine a work date + HH:MM into AIO's site-timezone mysql datetime.
+	 *
+	 * @param string $date     Y-m-d.
+	 * @param string $hm       H:i.
+	 * @param bool   $next_day Whether the time is the following calendar day.
+	 * @return string
+	 */
+	public function combine_day_time( $date, $hm, $next_day = false ) {
+		$hm = $this->normalize_hour_minute( $hm );
+		if ( '' === $hm || ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
+			return '';
+		}
+		if ( $next_day ) {
+			$date = $this->shift_date( $date, 1 );
+		}
+		return $date . ' ' . $hm . ':00';
+	}
+
+	/**
+	 * @param string $hm Raw hour:minute.
+	 * @return string
+	 */
+	public function normalize_hour_minute( $hm ) {
+		$hm = trim( (string) $hm );
+		if ( preg_match( '/^(\d{1,2}):(\d{2})$/', $hm, $m ) ) {
+			$hour = (int) $m[1];
+			$min  = (int) $m[2];
+			if ( $hour >= 0 && $hour <= 23 && $min >= 0 && $min <= 59 ) {
+				return sprintf( '%02d:%02d', $hour, $min );
+			}
+		}
+		return '';
+	}
+
+	/**
 	 * @param string $start Start datetime.
 	 * @param string $end   End datetime.
 	 * @return string
 	 */
-	private function elapsed_label( $start, $end ) {
+	public function elapsed_label( $start, $end ) {
 		$start_ts = strtotime( $start );
 		$end_ts   = strtotime( $end );
 		if ( ! $start_ts || ! $end_ts || $end_ts < $start_ts ) {

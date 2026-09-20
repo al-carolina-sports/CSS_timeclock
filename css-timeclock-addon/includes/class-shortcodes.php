@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * [css_tc_pin_kiosk] and [css_tc_name_kiosk].
+ * [css_tc_pin_kiosk], [css_tc_name_kiosk], and [css_tc_my_times].
  */
 class Css_Tc_Shortcodes {
 
@@ -20,33 +20,51 @@ class Css_Tc_Shortcodes {
 	private static $assets_queued = false;
 
 	/**
+	 * @var bool
+	 */
+	private static $times_assets_queued = false;
+
+	/**
 	 * @return void
 	 */
 	public static function register() {
 		add_shortcode( 'css_tc_pin_kiosk', array( __CLASS__, 'pin_kiosk' ) );
 		add_shortcode( 'css_tc_name_kiosk', array( __CLASS__, 'name_kiosk' ) );
+		add_shortcode( 'css_tc_my_times', array( __CLASS__, 'my_times' ) );
 		add_filter( 'body_class', array( __CLASS__, 'body_class' ) );
 	}
 
 	/**
-	 * Create (or reuse) public pages that host the kiosk shortcodes.
-	 *
-	 * @return array{pin_kiosk_page_id:int,name_kiosk_page_id:int}
+	 * @return array<string,int>
 	 */
 	public static function create_kiosk_pages() {
+		return self::create_public_pages();
+	}
+
+	/**
+	 * Create (or reuse) public pages that host the kiosk and employee shortcodes.
+	 *
+	 * @return array{pin_kiosk_page_id:int,name_kiosk_page_id:int,employee_times_page_id:int}
+	 */
+	public static function create_public_pages() {
 		$plugin   = css_tc_addon();
 		$settings = $plugin->get_settings();
 
 		$pages = array(
-			'pin_kiosk_page_id'  => array(
+			'pin_kiosk_page_id'      => array(
 				'title'   => __( 'PIN Time Clock', 'css-timeclock-addon' ),
 				'slug'    => 'pin-time-clock',
 				'content' => '[css_tc_pin_kiosk]',
 			),
-			'name_kiosk_page_id' => array(
+			'name_kiosk_page_id'     => array(
 				'title'   => __( 'Name Time Clock', 'css-timeclock-addon' ),
 				'slug'    => 'name-time-clock',
 				'content' => '[css_tc_name_kiosk]',
+			),
+			'employee_times_page_id' => array(
+				'title'   => __( 'My Time Clock', 'css-timeclock-addon' ),
+				'slug'    => 'my-time-clock',
+				'content' => '[css_tc_my_times]',
 			),
 		);
 
@@ -84,8 +102,9 @@ class Css_Tc_Shortcodes {
 		$plugin->update_settings( $settings );
 
 		return array(
-			'pin_kiosk_page_id'  => (int) $settings['pin_kiosk_page_id'],
-			'name_kiosk_page_id' => (int) $settings['name_kiosk_page_id'],
+			'pin_kiosk_page_id'      => (int) $settings['pin_kiosk_page_id'],
+			'name_kiosk_page_id'     => (int) $settings['name_kiosk_page_id'],
+			'employee_times_page_id' => (int) $settings['employee_times_page_id'],
 		);
 	}
 
@@ -103,6 +122,9 @@ class Css_Tc_Shortcodes {
 		}
 		if ( has_shortcode( $post->post_content, 'css_tc_pin_kiosk' ) || has_shortcode( $post->post_content, 'css_tc_name_kiosk' ) ) {
 			$classes[] = 'css-tc-kiosk-page';
+		}
+		if ( has_shortcode( $post->post_content, 'css_tc_my_times' ) ) {
+			$classes[] = 'css-tc-times-page';
 		}
 		return $classes;
 	}
@@ -140,6 +162,87 @@ class Css_Tc_Shortcodes {
 	}
 
 	/**
+	 * Logged-in employee times + suggest-edit dashboard.
+	 *
+	 * @param array<string,string>|string $atts Shortcode attributes.
+	 * @return string
+	 */
+	public static function my_times( $atts ) {
+		unset( $atts );
+		self::enqueue_times_assets();
+
+		$user_id   = get_current_user_id();
+		$logged_in = $user_id > 0;
+		$allowed   = $logged_in && css_tc_addon()->employees->can_view_own_times( $user_id );
+		$login_url = wp_login_url( get_permalink() ? (string) get_permalink() : home_url( '/my-time-clock/' ) );
+
+		ob_start();
+		include CSS_TC_ADDON_DIR . 'public/views/my-times.php';
+		return (string) ob_get_clean();
+	}
+
+	/**
+	 * @return void
+	 */
+	private static function enqueue_times_assets() {
+		if ( self::$times_assets_queued ) {
+			return;
+		}
+		self::$times_assets_queued = true;
+
+		wp_enqueue_style(
+			'css-tc-times',
+			CSS_TC_ADDON_URL . 'public/css/times.css',
+			array(),
+			CSS_TC_ADDON_VERSION
+		);
+
+		if ( ! is_user_logged_in() || ! css_tc_addon()->employees->can_view_own_times( get_current_user_id() ) ) {
+			return;
+		}
+
+		wp_enqueue_script(
+			'css-tc-times',
+			CSS_TC_ADDON_URL . 'public/js/times.js',
+			array(),
+			CSS_TC_ADDON_VERSION,
+			true
+		);
+
+		wp_localize_script(
+			'css-tc-times',
+			'cssTcTimes',
+			array(
+				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+				'nonce'   => wp_create_nonce( Css_Tc_Corrections::EMPLOYEE_NONCE ),
+				'strings' => array(
+					'loadError'    => __( 'Could not load your times. Refresh the page.', 'css-timeclock-addon' ),
+					'noShifts'     => __( 'No punches this day.', 'css-timeclock-addon' ),
+					'openShift'    => __( 'Still clocked in', 'css-timeclock-addon' ),
+					'suggest'      => __( 'Suggest edit', 'css-timeclock-addon' ),
+					'pending'      => __( 'Pending review', 'css-timeclock-addon' ),
+					'approved'     => __( 'Approved', 'css-timeclock-addon' ),
+					'rejected'     => __( 'Rejected', 'css-timeclock-addon' ),
+					'reasonLabel'  => __( 'Reason', 'css-timeclock-addon' ),
+					'clockIn'      => __( 'Clock in', 'css-timeclock-addon' ),
+					'clockOut'     => __( 'Clock out', 'css-timeclock-addon' ),
+					'nextDay'      => __( 'Clock-out is the next day', 'css-timeclock-addon' ),
+					'missing'      => __( 'I missed a punch / this day is incomplete', 'css-timeclock-addon' ),
+					'submit'       => __( 'Send suggestion', 'css-timeclock-addon' ),
+					'cancel'       => __( 'Cancel', 'css-timeclock-addon' ),
+					'sent'         => __( 'Suggestion sent. A supervisor will review it.', 'css-timeclock-addon' ),
+					'needReason'   => __( 'Please add a short reason (at least 8 characters).', 'css-timeclock-addon' ),
+					'today'        => __( 'Today', 'css-timeclock-addon' ),
+					'shiftTotal'   => __( 'Shift time', 'css-timeclock-addon' ),
+					'updatePending'=> __( 'Update pending suggestion', 'css-timeclock-addon' ),
+					'reviewNote'   => __( 'Supervisor note', 'css-timeclock-addon' ),
+					'addMissing'   => __( 'Add a missing shift', 'css-timeclock-addon' ),
+				),
+			)
+		);
+	}
+
+	/**
 	 * @return void
 	 */
 	private static function enqueue_assets() {
@@ -169,14 +272,15 @@ class Css_Tc_Shortcodes {
 			'css-tc-kiosk',
 			'cssTcKiosk',
 			array(
-				'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
-				'nonce'        => wp_create_nonce( Css_Tc_Ajax::PUBLIC_NONCE ),
-				'pinMin'       => (int) $settings['pin_min_length'],
-				'pinMax'       => (int) $settings['pin_max_length'],
-				'idleResetMs'  => (int) $settings['idle_reset_ms'],
-				'pinEnabled'   => ! empty( $settings['pin_kiosk_enabled'] ),
-				'nameEnabled'  => ! empty( $settings['name_kiosk_enabled'] ),
-				'strings'      => array(
+				'ajaxUrl'        => admin_url( 'admin-ajax.php' ),
+				'nonce'          => wp_create_nonce( Css_Tc_Ajax::PUBLIC_NONCE ),
+				'pinMin'         => (int) $settings['pin_min_length'],
+				'pinMax'         => (int) $settings['pin_max_length'],
+				'idleResetMs'    => (int) $settings['idle_reset_ms'],
+				'pinEnabled'     => ! empty( $settings['pin_kiosk_enabled'] ),
+				'nameEnabled'    => ! empty( $settings['name_kiosk_enabled'] ),
+				'boardRefreshMs' => 20000,
+				'strings'        => array(
 					'enterPin'       => __( 'Enter your PIN', 'css-timeclock-addon' ),
 					'confirmPin'     => __( 'Confirm with your PIN', 'css-timeclock-addon' ),
 					'clockIn'        => __( 'Clock in', 'css-timeclock-addon' ),
@@ -194,6 +298,12 @@ class Css_Tc_Shortcodes {
 					'cancel'         => __( 'Cancel', 'css-timeclock-addon' ),
 					'clear'          => __( 'Clear', 'css-timeclock-addon' ),
 					'back'           => __( 'Back', 'css-timeclock-addon' ),
+					'workingNow'     => __( 'Working now', 'css-timeclock-addon' ),
+					'notClockedIn'   => __( 'Not clocked in', 'css-timeclock-addon' ),
+					'nobodyIn'       => __( 'Nobody is clocked in.', 'css-timeclock-addon' ),
+					'everyoneIn'     => __( 'Everyone is clocked in.', 'css-timeclock-addon' ),
+					'updatedAt'      => __( 'Updated', 'css-timeclock-addon' ),
+					'boardError'     => __( 'Could not load who is working.', 'css-timeclock-addon' ),
 				),
 			)
 		);

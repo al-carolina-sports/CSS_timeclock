@@ -74,6 +74,16 @@ class Css_Tc_Employees {
 	}
 
 	/**
+	 * Logged-in staff who may open the employee times dashboard.
+	 *
+	 * @param int $user_id User ID.
+	 * @return bool
+	 */
+	public function can_view_own_times( $user_id ) {
+		return $this->is_employee( $user_id );
+	}
+
+	/**
 	 * @param int $user_id User ID.
 	 * @return bool
 	 */
@@ -153,6 +163,18 @@ class Css_Tc_Employees {
 	 */
 	public function list_for_admin() {
 		return $this->query_users( $this->aio_roles() );
+	}
+
+	/**
+	 * Employees shown on the public kiosk status board.
+	 *
+	 * Same kiosk roles as the name list; PIN is not required so anyone AIO
+	 * would treat as staff can appear as in or out.
+	 *
+	 * @return array<int,array<string,mixed>>
+	 */
+	public function list_for_board() {
+		return $this->list_for_kiosk( false );
 	}
 
 	/**

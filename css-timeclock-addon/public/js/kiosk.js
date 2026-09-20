@@ -68,8 +68,105 @@
     el.textContent = length ? new Array(length + 1).join("•") : "○";
   }
 
-  function Kiosk(root) {
+  function fillRosterList(list, people, inClass) {
+    if (!list) {
+      return;
+    }
+    list.innerHTML = "";
+    (people || []).forEach(function (person) {
+      var li = document.createElement("li");
+      li.className = "css-tc-board__person " + (inClass || "css-tc-board__person--out");
+      var name = document.createElement("span");
+      name.className = "css-tc-board__name";
+      name.textContent = person.name || "";
+      li.appendChild(name);
+      if (person.clock_in_time) {
+        var time = document.createElement("span");
+        time.className = "css-tc-board__time";
+        time.textContent = person.clock_in_time;
+        li.appendChild(time);
+      }
+      list.appendChild(li);
+    });
+  }
+
+  function renderBoard(root, data) {
+    var working = data.working || [];
+    var out = data.out || [];
+    var workingCount = $(root, '[data-role="working-count"]');
+    var outCount = $(root, '[data-role="out-count"]');
+    var workingEmpty = $(root, '[data-role="working-empty"]');
+    var outEmpty = $(root, '[data-role="out-empty"]');
+    var updated = $(root, '[data-role="board-updated"]');
+    var error = $(root, '[data-role="board-error"]');
+
+    fillRosterList($(root, '[data-role="working-list"]'), working, "css-tc-board__person--in");
+    fillRosterList($(root, '[data-role="out-list"]'), out, "css-tc-board__person--out");
+    text(workingCount, String(data.working_count != null ? data.working_count : working.length));
+    text(outCount, String(data.out_count != null ? data.out_count : out.length));
+    show(workingEmpty, working.length === 0);
+    show(outEmpty, out.length === 0);
+    show(error, false);
+    if (data.generated_at) {
+      text(updated, (strings.updatedAt || "Updated") + " " + data.generated_at);
+    }
+  }
+
+  function StatusBoard(root) {
     this.root = root;
+    this.loading = false;
+    this.queued = false;
+    this.timer = null;
+    if (!$(root, '[data-role="board"]')) {
+      return;
+    }
+    this.refresh();
+    var interval = cfg.boardRefreshMs || 20000;
+    if (interval < 15000) {
+      interval = 15000;
+    }
+    if (interval > 30000) {
+      interval = 30000;
+    }
+    this.timer = window.setInterval(this.refresh.bind(this), interval);
+  }
+
+  StatusBoard.prototype.refresh = function () {
+    var self = this;
+    if (!$(this.root, '[data-role="board"]')) {
+      return;
+    }
+    if (this.loading) {
+      this.queued = true;
+      return;
+    }
+    this.loading = true;
+    post("css_tc_roster", { kiosk: this.root.getAttribute("data-kiosk") || "pin" })
+      .then(function (data) {
+        self.loading = false;
+        renderBoard(self.root, data || {});
+        if (self.queued) {
+          self.queued = false;
+          self.refresh();
+        }
+      })
+      .catch(function (err) {
+        self.loading = false;
+        var error = $(self.root, '[data-role="board-error"]');
+        if (err && err.status === 429) {
+          return;
+        }
+        text(error, (err && err.message) || strings.boardError || strings.network);
+        show(error, true);
+        if (self.queued) {
+          self.queued = false;
+        }
+      });
+  };
+
+  function Kiosk(root, board) {
+    this.root = root;
+    this.board = board || null;
     this.mode = root.getAttribute("data-kiosk") || "pin";
     this.pin = "";
     this.userId = 0;
@@ -197,7 +294,8 @@
       text(
         $(this.root, '[data-role="status"]'),
         (strings.workingSince || "Clocked in since") + " " + data.clock_in_time
-      );    } else {
+      );
+    } else {
       text($(this.root, '[data-role="status"]'), "");
     }
     show($(this.root, '[data-role="action-error"]'), false);
@@ -231,6 +329,9 @@
       .then(function (data) {
         self.busy = false;
         self.showSuccess(data);
+        if (self.board && typeof self.board.refresh === "function") {
+          self.board.refresh();
+        }
       })
       .catch(function (err) {
         self.busy = false;
@@ -344,8 +445,11 @@
   };
 
   document.addEventListener("DOMContentLoaded", function () {
-    document.querySelectorAll(".css-tc-kiosk[data-enabled='1']").forEach(function (root) {
-      new Kiosk(root);
+    document.querySelectorAll(".css-tc-kiosk").forEach(function (root) {
+      var board = new StatusBoard(root);
+      if (root.getAttribute("data-enabled") === "1") {
+        new Kiosk(root, board);
+      }
     });
   });
 })();
