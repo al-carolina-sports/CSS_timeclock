@@ -1,0 +1,12 @@
+.DS_Store
+Thumbs.db
+*.zip
+!dist/css-timeclock-addon.zip
+node_modules/
+preview/node_modules/
+.idea/
+.vscode/
+*.log
+agent-tools/
+tmp-wp/
+wp-content/
