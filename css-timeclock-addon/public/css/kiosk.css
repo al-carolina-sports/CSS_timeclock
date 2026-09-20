@@ -29,6 +29,10 @@
 	box-sizing: border-box;
 }
 
+.css-tc-kiosk [hidden] {
+	display: none !important;
+}
+
 .css-tc-kiosk {
 	--css-tc-bg: #eef3f6;
 	--css-tc-ink: #163043;
