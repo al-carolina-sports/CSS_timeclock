@@ -1,0 +1,213 @@
+<?php
+/**
+ * Main plugin controller.
+ *
+ * @package CssTimeclockAddon
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+require_once CSS_TC_ADDON_DIR . 'includes/class-employees.php';
+require_once CSS_TC_ADDON_DIR . 'includes/class-pins.php';
+require_once CSS_TC_ADDON_DIR . 'includes/class-punches.php';
+require_once CSS_TC_ADDON_DIR . 'includes/class-ajax.php';
+require_once CSS_TC_ADDON_DIR . 'includes/class-admin.php';
+require_once CSS_TC_ADDON_DIR . 'includes/class-shortcodes.php';
+
+/**
+ * Singleton that wires admin, shortcodes, assets, and AJAX.
+ */
+class Css_Tc_Plugin {
+
+	const OPTION_KEY = 'css_tc_addon_settings';
+
+	/**
+	 * @var Css_Tc_Plugin|null
+	 */
+	private static $instance = null;
+
+	/**
+	 * @var Css_Tc_Employees
+	 */
+	public $employees;
+
+	/**
+	 * @var Css_Tc_Pins
+	 */
+	public $pins;
+
+	/**
+	 * @var Css_Tc_Punches
+	 */
+	public $punches;
+
+	/**
+	 * @return Css_Tc_Plugin
+	 */
+	public static function instance() {
+		if ( null === self::$instance ) {
+			self::$instance = new self();
+		}
+		return self::$instance;
+	}
+
+	private function __construct() {
+		$this->employees = new Css_Tc_Employees();
+		$this->pins      = new Css_Tc_Pins();
+		$this->punches   = new Css_Tc_Punches();
+
+		add_action( 'plugins_loaded', array( $this, 'load_textdomain' ) );
+		add_action( 'init', array( $this, 'register_runtime' ) );
+		add_action( 'admin_notices', array( $this, 'maybe_missing_aio_notice' ) );
+		add_filter( 'plugin_action_links_' . CSS_TC_ADDON_BASENAME, array( $this, 'plugin_action_links' ) );
+	}
+
+	/**
+	 * Default option values.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public static function default_settings() {
+		return array(
+			'pin_kiosk_enabled'  => 1,
+			'name_kiosk_enabled' => 1,
+			'pin_min_length'     => 4,
+			'pin_max_length'     => 8,
+			'rate_limit_max'     => 5,
+			'rate_limit_window'  => 900,
+			'idle_reset_ms'      => 8000,
+			'pin_kiosk_page_id'  => 0,
+			'name_kiosk_page_id' => 0,
+		);
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	public function get_settings() {
+		$stored = get_option( self::OPTION_KEY, array() );
+		if ( ! is_array( $stored ) ) {
+			$stored = array();
+		}
+		return wp_parse_args( $stored, self::default_settings() );
+	}
+
+	/**
+	 * @param array<string,mixed> $settings Partial settings.
+	 * @return array<string,mixed>
+	 */
+	public function update_settings( $settings ) {
+		$merged = wp_parse_args( $settings, $this->get_settings() );
+		update_option( self::OPTION_KEY, $merged, false );
+		return $merged;
+	}
+
+	/**
+	 * True when All in One Time Clock Lite is loaded.
+	 *
+	 * @return bool
+	 */
+	public static function aio_is_active() {
+		return class_exists( 'AIO_Time_Clock_Lite_Actions' ) || class_exists( 'AIO_Time_Clock_Plugin_Lite' );
+	}
+
+	/**
+	 * Capability used for admin screens.
+	 *
+	 * Matches AIO's Time Clock menu (`edit_posts`) so Time Clock Admins can
+	 * manage PINs. Falls back to Settings → manage_options when AIO is absent.
+	 *
+	 * @return string
+	 */
+	public static function admin_capability() {
+		if ( self::aio_is_active() ) {
+			return 'edit_posts';
+		}
+		return 'manage_options';
+	}
+
+	/**
+	 * @return bool
+	 */
+	public static function user_can_manage() {
+		return current_user_can( 'manage_options' ) || current_user_can( self::admin_capability() );
+	}
+
+	public function load_textdomain() {
+		load_plugin_textdomain( 'css-timeclock-addon', false, dirname( CSS_TC_ADDON_BASENAME ) . '/languages' );
+	}
+
+	public function register_runtime() {
+		Css_Tc_Ajax::register();
+		Css_Tc_Admin::register();
+		Css_Tc_Shortcodes::register();
+	}
+
+	public function maybe_missing_aio_notice() {
+		if ( ! self::user_can_manage() ) {
+			return;
+		}
+		if ( self::aio_is_active() ) {
+			return;
+		}
+
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen ) {
+			return;
+		}
+
+		$relevant = in_array( $screen->id, array( 'plugins', 'dashboard' ), true )
+			|| ( isset( $screen->base ) && false !== strpos( (string) $screen->id, 'css-tc' ) )
+			|| ( isset( $screen->parent_base ) && 'aio-tc-lite' === $screen->parent_base );
+
+		if ( ! $relevant && isset( $_GET['page'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$page = sanitize_key( wp_unslash( $_GET['page'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			if ( 'css-tc-addon' !== $page ) {
+				return;
+			}
+		} elseif ( ! $relevant ) {
+			return;
+		}
+
+		echo '<div class="notice notice-warning"><p>';
+		echo esc_html__( 'CSS Time Clock Addon is a soft add-on for All in One Time Clock Lite. Install and activate AIO Time Clock Lite so Real Time Monitoring, employee roles, and shift reports stay in sync. Kiosk punches still write AIO-compatible shift posts if Lite is missing.', 'css-timeclock-addon' );
+		echo '</p></div>';
+	}
+
+	/**
+	 * @param array<string,string> $links Plugin row links.
+	 * @return array<string,string>
+	 */
+	public function plugin_action_links( $links ) {
+		$url = current_user_can( 'manage_options' )
+			? admin_url( 'options-general.php?page=css-tc-addon' )
+			: admin_url( 'admin.php?page=css-tc-addon' );
+		$links['settings'] = '<a href="' . esc_url( $url ) . '">' . esc_html__( 'Kiosk settings', 'css-timeclock-addon' ) . '</a>';
+		return $links;
+	}
+
+	/**
+	 * Activation: defaults + kiosk pages.
+	 *
+	 * @return void
+	 */
+	public static function activate() {
+		$existing = get_option( self::OPTION_KEY, array() );
+		if ( ! is_array( $existing ) || empty( $existing ) ) {
+			add_option( self::OPTION_KEY, self::default_settings(), '', false );
+		} else {
+			update_option( self::OPTION_KEY, wp_parse_args( $existing, self::default_settings() ), false );
+		}
+
+		Css_Tc_Shortcodes::create_kiosk_pages();
+	}
+
+	/**
+	 * @return void
+	 */
+	public static function deactivate() {
+		// Pages and hashed PINs are left in place so reactivation is non-destructive.
+	}
+}
