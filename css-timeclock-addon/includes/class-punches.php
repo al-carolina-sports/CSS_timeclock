@@ -20,7 +20,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Css_Tc_Punches {
 
-	const POST_TYPE = 'shift';
+	const POST_TYPE        = 'shift';
+	const ROSTER_CACHE_KEY = 'css_tc_roster_public';
+	const ROSTER_CACHE_TTL = 8;
 
 	/**
 	 * @param int $user_id Employee user ID.
@@ -117,6 +119,8 @@ class Css_Tc_Punches {
 		 */
 		do_action( 'css_tc_after_clock_in', $shift_id, $user_id, $source );
 
+		$this->bust_roster_cache();
+
 		return array(
 			'action'        => 'clock_in',
 			'shift_id'      => (int) $shift_id,
@@ -158,6 +162,8 @@ class Css_Tc_Punches {
 		 */
 		do_action( 'css_tc_after_clock_out', $shift_id, $user_id, $source );
 
+		$this->bust_roster_cache();
+
 		return array(
 			'action'         => 'clock_out',
 			'shift_id'       => $shift_id,
@@ -166,6 +172,190 @@ class Css_Tc_Punches {
 			'clock_out_time' => $this->format_time( $now ),
 			'time_total'     => $this->elapsed_label( (string) $clock_in, $now ),
 		);
+	}
+
+	/**
+	 * Open shifts keyed by employee user ID (AIO: clock-in set, clock-out empty).
+	 *
+	 * @return array<int,array{clock_in_time:string}>
+	 */
+	public function open_shifts_by_author() {
+		$query = new WP_Query(
+			array(
+				'post_type'      => self::POST_TYPE,
+				'post_status'    => array( 'publish', 'private' ),
+				'posts_per_page' => 200,
+				'orderby'        => 'ID',
+				'order'          => 'DESC',
+				'no_found_rows'  => true,
+				'meta_query'     => array(
+					'relation' => 'AND',
+					array(
+						'key'     => 'employee_clock_in_time',
+						'value'   => '',
+						'compare' => '!=',
+					),
+					array(
+						'relation' => 'OR',
+						array(
+							'key'     => 'employee_clock_out_time',
+							'compare' => 'NOT EXISTS',
+						),
+						array(
+							'key'     => 'employee_clock_out_time',
+							'value'   => '',
+							'compare' => '=',
+						),
+					),
+				),
+			)
+		);
+
+		$map = array();
+
+		if ( $query->have_posts() ) {
+			foreach ( $query->posts as $post ) {
+				$author = (int) $post->post_author;
+				if ( $author < 1 || isset( $map[ $author ] ) ) {
+					continue;
+				}
+
+				$clock_in  = get_post_meta( $post->ID, 'employee_clock_in_time', true );
+				$clock_out = get_post_meta( $post->ID, 'employee_clock_out_time', true );
+				if ( empty( $clock_in ) || ( ! empty( $clock_out ) && '' !== $clock_out ) ) {
+					continue;
+				}
+
+				$map[ $author ] = array(
+					'clock_in_time' => $this->format_board_time( (string) $clock_in ),
+				);
+			}
+		}
+
+		wp_reset_postdata();
+
+		return $map;
+	}
+
+	/**
+	 * Public kiosk board: display names + in/out (+ clock-in time). No IDs, emails, or PINs.
+	 *
+	 * @return array{working:array<int,array<string,string>>,out:array<int,array<string,string>>,working_count:int,out_count:int,generated_at:string}
+	 */
+	public function public_board() {
+		$cached = get_transient( self::ROSTER_CACHE_KEY );
+		if ( is_array( $cached ) && isset( $cached['working'], $cached['out'] ) ) {
+			return $cached;
+		}
+
+		$employees = css_tc_addon()->employees->list_for_board();
+		$open      = $this->open_shifts_by_author();
+		$seen      = array();
+
+		foreach ( $employees as $emp ) {
+			$seen[ (int) $emp['id'] ] = true;
+		}
+
+		foreach ( $open as $user_id => $_shift ) {
+			if ( isset( $seen[ $user_id ] ) ) {
+				continue;
+			}
+			if ( ! css_tc_addon()->employees->is_employee( $user_id ) ) {
+				continue;
+			}
+			$employees[]        = array(
+				'id'   => (int) $user_id,
+				'name' => css_tc_addon()->employees->display_name( (int) $user_id ),
+			);
+			$seen[ $user_id ] = true;
+		}
+
+		usort(
+			$employees,
+			static function ( $a, $b ) {
+				return strcasecmp( (string) $a['name'], (string) $b['name'] );
+			}
+		);
+
+		$working = array();
+		$out     = array();
+
+		foreach ( $employees as $emp ) {
+			$id  = (int) $emp['id'];
+			$row = array(
+				'name' => (string) $emp['name'],
+			);
+			if ( isset( $open[ $id ] ) ) {
+				$row['clock_in_time'] = $open[ $id ]['clock_in_time'];
+				$working[]            = $row;
+			} else {
+				$out[] = $row;
+			}
+		}
+
+		$payload = array(
+			'working'       => $working,
+			'out'           => $out,
+			'working_count' => count( $working ),
+			'out_count'     => count( $out ),
+			'generated_at'  => $this->format_board_now(),
+		);
+
+		/**
+		 * Filter the public kiosk status board payload (names and in/out only).
+		 *
+		 * @param array<string,mixed> $payload Board payload.
+		 */
+		$payload = apply_filters( 'css_tc_public_board', $payload );
+
+		set_transient( self::ROSTER_CACHE_KEY, $payload, self::ROSTER_CACHE_TTL );
+
+		return $payload;
+	}
+
+	/**
+	 * Drop the short-lived public board cache after a punch.
+	 *
+	 * @return void
+	 */
+	public function bust_roster_cache() {
+		delete_transient( self::ROSTER_CACHE_KEY );
+	}
+
+	/**
+	 * Clock-in time for the kiosk board: time only when it is today.
+	 *
+	 * @param string $mysql_datetime Datetime string.
+	 * @return string
+	 */
+	public function format_board_time( $mysql_datetime ) {
+		$ts = strtotime( $mysql_datetime );
+		if ( ! $ts ) {
+			return $mysql_datetime;
+		}
+
+		$time_format = get_option( 'time_format', 'g:i a' );
+		$date_format = get_option( 'date_format', 'Y-m-d' );
+		if ( function_exists( 'wp_date' ) ) {
+			$same_day = ( wp_date( 'Y-m-d', $ts ) === wp_date( 'Y-m-d' ) );
+			$format   = $same_day ? $time_format : ( $date_format . ' ' . $time_format );
+			return wp_date( $format, $ts );
+		}
+
+		$same_day = ( date_i18n( 'Y-m-d', $ts ) === date_i18n( 'Y-m-d' ) );
+		$format   = $same_day ? $time_format : ( $date_format . ' ' . $time_format );
+		return date_i18n( $format, $ts );
+	}
+
+	/**
+	 * @return string
+	 */
+	private function format_board_now() {
+		$format = get_option( 'time_format', 'g:i a' );
+		if ( function_exists( 'wp_date' ) ) {
+			return wp_date( $format );
+		}
+		return date_i18n( $format );
 	}
 
 	/**

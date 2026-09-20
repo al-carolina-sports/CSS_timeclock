@@ -169,14 +169,15 @@ class Css_Tc_Shortcodes {
 			'css-tc-kiosk',
 			'cssTcKiosk',
 			array(
-				'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
-				'nonce'        => wp_create_nonce( Css_Tc_Ajax::PUBLIC_NONCE ),
-				'pinMin'       => (int) $settings['pin_min_length'],
-				'pinMax'       => (int) $settings['pin_max_length'],
-				'idleResetMs'  => (int) $settings['idle_reset_ms'],
-				'pinEnabled'   => ! empty( $settings['pin_kiosk_enabled'] ),
-				'nameEnabled'  => ! empty( $settings['name_kiosk_enabled'] ),
-				'strings'      => array(
+				'ajaxUrl'        => admin_url( 'admin-ajax.php' ),
+				'nonce'          => wp_create_nonce( Css_Tc_Ajax::PUBLIC_NONCE ),
+				'pinMin'         => (int) $settings['pin_min_length'],
+				'pinMax'         => (int) $settings['pin_max_length'],
+				'idleResetMs'    => (int) $settings['idle_reset_ms'],
+				'pinEnabled'     => ! empty( $settings['pin_kiosk_enabled'] ),
+				'nameEnabled'    => ! empty( $settings['name_kiosk_enabled'] ),
+				'boardRefreshMs' => 20000,
+				'strings'        => array(
 					'enterPin'       => __( 'Enter your PIN', 'css-timeclock-addon' ),
 					'confirmPin'     => __( 'Confirm with your PIN', 'css-timeclock-addon' ),
 					'clockIn'        => __( 'Clock in', 'css-timeclock-addon' ),
@@ -194,6 +195,12 @@ class Css_Tc_Shortcodes {
 					'cancel'         => __( 'Cancel', 'css-timeclock-addon' ),
 					'clear'          => __( 'Clear', 'css-timeclock-addon' ),
 					'back'           => __( 'Back', 'css-timeclock-addon' ),
+					'workingNow'     => __( 'Working now', 'css-timeclock-addon' ),
+					'notClockedIn'   => __( 'Not clocked in', 'css-timeclock-addon' ),
+					'nobodyIn'       => __( 'Nobody is clocked in.', 'css-timeclock-addon' ),
+					'everyoneIn'     => __( 'Everyone is clocked in.', 'css-timeclock-addon' ),
+					'updatedAt'      => __( 'Updated', 'css-timeclock-addon' ),
+					'boardError'     => __( 'Could not load who is working.', 'css-timeclock-addon' ),
 				),
 			)
 		);

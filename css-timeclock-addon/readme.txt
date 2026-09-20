@@ -4,7 +4,7 @@ Tags: time clock, kiosk, pin, employee, aio time clock
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -24,6 +24,9 @@ This plugin does not modify aio-time-clock-lite files.
 4. Set employee PINs under Time Clock Lite → Kiosk & PINs.
 
 == Changelog ==
+
+= 1.1.0 =
+* Public live who's-working board on PIN and name-list kiosk pages (AJAX refresh).
 
 = 1.0.0 =
 * Phase 1: PIN kiosk, name-list kiosk, hashed PIN management, AIO-compatible punches.

@@ -22,12 +22,13 @@ This plugin does **not** fork or edit AIO Lite. It writes the same `shift` posts
 
 1. **PIN kiosk** — `[css_tc_pin_kiosk]` — large PIN pad, then Clock in / Clock out.
 2. **Name-list kiosk** — `[css_tc_name_kiosk]` — alphabetical employees, tap a name, **confirm with PIN**, then Clock in / Clock out.
-3. Admin **Kiosk & PINs** screen (under Time Clock Lite when AIO is active, otherwise Settings).
-4. Per-employee PINs stored with `wp_hash_password()` / checked with `wp_check_password()`. Never plaintext.
-5. Failed-PIN rate limit by tablet IP.
-6. After a punch, a success message, then the kiosk returns to idle. No employee WordPress session is created.
+3. **Who’s working board** — on both kiosk pages (logged-out visitors). Side panel on wide screens; stacks under the pad on tablet widths. Lists **Working now** (with clock-in time) and **Not clocked in**. Refreshes every 20 seconds and immediately after a successful punch.
+4. Admin **Kiosk & PINs** screen (under Time Clock Lite when AIO is active, otherwise Settings).
+5. Per-employee PINs stored with `wp_hash_password()` / checked with `wp_check_password()`. Never plaintext.
+6. Failed-PIN rate limit by tablet IP.
+7. After a punch, a success message, then the kiosk returns to idle. No employee WordPress session is created.
 
-Phase 2+ (not in this build): multi-facility, locations, IP allowlist, bulletin board, self-corrections, Pro features.
+Phase 2+ (not in this build): multi-facility, locations, IP allowlist, bulletin / announcements, self-corrections, Pro features.
 
 ## How punches reach AIO Lite
 
@@ -85,7 +86,8 @@ Employees without a PIN do not appear on the name-list kiosk. The PIN kiosk only
 2. Enable the matching kiosk on the settings tab if a page says it is turned off.
 3. PIN kiosk: enter PIN → **Continue** → Clock in or Clock out.
 4. Name kiosk: tap a name → enter that person’s PIN → Clock in or Clock out.
-5. Wait for the success screen. The kiosk resets by itself (default 8 seconds).
+5. The **Who’s working** board on the same page shows who is in or out. It updates after a punch without reloading the page.
+6. Wait for the success screen. The kiosk resets by itself (default 8 seconds).
 
 ## Verify against AIO monitoring
 
@@ -114,6 +116,7 @@ Do not commit real PINs. Treat them like passwords.
 ## Security
 
 - Public AJAX uses a nonce (`css_tc_kiosk`). Admin PIN screens require `edit_posts` when AIO is present (`manage_options` otherwise) plus an admin nonce.
+- The public roster action (`css_tc_roster`) returns display names, in/out status, and clock-in times only — no PINs, emails, user IDs, or admin data. It is rate-limited separately from the PIN lock (40 requests / minute / IP) and cached for a few seconds.
 - Failed PINs are counted per client IP (transient). After the configured limit the IP is locked for the window (default 5 failures / 15 minutes).
 - PIN lookup errors are generic (“That PIN was not recognized”).
 - All kiosk output is escaped; all input is sanitized. PINs are digits-only before hashing.

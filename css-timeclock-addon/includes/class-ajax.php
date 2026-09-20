@@ -29,6 +29,8 @@ class Css_Tc_Ajax {
 		add_action( 'wp_ajax_nopriv_css_tc_punch', array( $self, 'punch' ) );
 		add_action( 'wp_ajax_css_tc_employees', array( $self, 'employees' ) );
 		add_action( 'wp_ajax_nopriv_css_tc_employees', array( $self, 'employees' ) );
+		add_action( 'wp_ajax_css_tc_roster', array( $self, 'roster' ) );
+		add_action( 'wp_ajax_nopriv_css_tc_roster', array( $self, 'roster' ) );
 
 		add_action( 'wp_ajax_css_tc_save_settings', array( $self, 'save_settings' ) );
 		add_action( 'wp_ajax_css_tc_save_pin', array( $self, 'save_pin' ) );
@@ -191,6 +193,27 @@ class Css_Tc_Ajax {
 	}
 
 	/**
+	 * Public who's-working board for logged-out kiosk tablets.
+	 *
+	 * @return void
+	 */
+	public function roster() {
+		$this->verify_public_nonce();
+
+		$settings = css_tc_addon()->get_settings();
+		if ( empty( $settings['pin_kiosk_enabled'] ) && empty( $settings['name_kiosk_enabled'] ) ) {
+			wp_send_json_error( array( 'message' => __( 'The kiosk is disabled.', 'css-timeclock-addon' ) ), 403 );
+		}
+
+		$limited = $this->assert_roster_not_rate_limited();
+		if ( is_wp_error( $limited ) ) {
+			wp_send_json_error( array( 'message' => $limited->get_error_message() ), 429 );
+		}
+
+		wp_send_json_success( css_tc_addon()->punches->public_board() );
+	}
+
+	/**
 	 * @return void
 	 */
 	public function save_settings() {
@@ -275,6 +298,28 @@ class Css_Tc_Ajax {
 				'pages'   => $ids,
 			)
 		);
+	}
+
+	/**
+	 * Soft IP throttle for the public roster poll (separate from the PIN lock).
+	 *
+	 * @return true|WP_Error
+	 */
+	private function assert_roster_not_rate_limited() {
+		$key   = css_tc_addon()->pins->client_key() . '_roster';
+		$count = (int) get_transient( $key );
+		$max   = 40;
+
+		if ( $count >= $max ) {
+			return new WP_Error(
+				'css_tc_roster_limited',
+				__( 'Please wait a moment and try again.', 'css-timeclock-addon' )
+			);
+		}
+
+		set_transient( $key, $count + 1, 60 );
+
+		return true;
 	}
 
 	/**

@@ -24,9 +24,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<p class="css-tc-kiosk__clock" data-role="live-clock" aria-live="off"></p>
 	</div>
 
+	<div class="css-tc-kiosk__layout">
 	<?php if ( ! $enabled ) : ?>
-		<div class="css-tc-kiosk__panel css-tc-kiosk__panel--message">
-			<p><?php echo esc_html__( 'This PIN kiosk is turned off. A supervisor can enable it under Time Clock → Kiosk & PINs.', 'css-timeclock-addon' ); ?></p>
+		<div class="css-tc-kiosk__stage">
+			<div class="css-tc-kiosk__panel css-tc-kiosk__panel--message">
+				<p><?php echo esc_html__( 'This PIN kiosk is turned off. A supervisor can enable it under Time Clock → Kiosk & PINs.', 'css-timeclock-addon' ); ?></p>
+			</div>
 		</div>
 	<?php else : ?>
 		<div class="css-tc-kiosk__stage" data-role="stage">
@@ -68,4 +71,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 			</section>
 		</div>
 	<?php endif; ?>
+		<?php include CSS_TC_ADDON_DIR . 'public/views/status-board.php'; ?>
+	</div>
 </div>

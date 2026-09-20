@@ -156,6 +156,18 @@ class Css_Tc_Employees {
 	}
 
 	/**
+	 * Employees shown on the public kiosk status board.
+	 *
+	 * Same kiosk roles as the name list; PIN is not required so anyone AIO
+	 * would treat as staff can appear as in or out.
+	 *
+	 * @return array<int,array<string,mixed>>
+	 */
+	public function list_for_board() {
+		return $this->list_for_kiosk( false );
+	}
+
+	/**
 	 * Active employees for the name kiosk. Optionally only those with a PIN.
 	 *
 	 * @param bool $require_pin Whether to hide users without a hashed PIN.
