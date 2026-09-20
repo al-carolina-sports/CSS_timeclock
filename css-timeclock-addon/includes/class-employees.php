@@ -74,6 +74,16 @@ class Css_Tc_Employees {
 	}
 
 	/**
+	 * Logged-in staff who may open the employee times dashboard.
+	 *
+	 * @param int $user_id User ID.
+	 * @return bool
+	 */
+	public function can_view_own_times( $user_id ) {
+		return $this->is_employee( $user_id );
+	}
+
+	/**
 	 * @param int $user_id User ID.
 	 * @return bool
 	 */

@@ -12,6 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 require_once CSS_TC_ADDON_DIR . 'includes/class-employees.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-pins.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-punches.php';
+require_once CSS_TC_ADDON_DIR . 'includes/class-corrections.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-ajax.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-admin.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-shortcodes.php';
@@ -44,6 +45,11 @@ class Css_Tc_Plugin {
 	public $punches;
 
 	/**
+	 * @var Css_Tc_Corrections
+	 */
+	public $corrections;
+
+	/**
 	 * @return Css_Tc_Plugin
 	 */
 	public static function instance() {
@@ -54,12 +60,14 @@ class Css_Tc_Plugin {
 	}
 
 	private function __construct() {
-		$this->employees = new Css_Tc_Employees();
-		$this->pins      = new Css_Tc_Pins();
-		$this->punches   = new Css_Tc_Punches();
+		$this->employees   = new Css_Tc_Employees();
+		$this->pins        = new Css_Tc_Pins();
+		$this->punches     = new Css_Tc_Punches();
+		$this->corrections = new Css_Tc_Corrections();
 
 		add_action( 'plugins_loaded', array( $this, 'load_textdomain' ) );
 		add_action( 'init', array( $this, 'register_runtime' ) );
+		add_action( 'admin_init', array( $this, 'maybe_create_times_page' ) );
 		add_action( 'admin_notices', array( $this, 'maybe_missing_aio_notice' ) );
 		add_filter( 'plugin_action_links_' . CSS_TC_ADDON_BASENAME, array( $this, 'plugin_action_links' ) );
 	}
@@ -78,8 +86,10 @@ class Css_Tc_Plugin {
 			'rate_limit_max'     => 5,
 			'rate_limit_window'  => 900,
 			'idle_reset_ms'      => 8000,
-			'pin_kiosk_page_id'  => 0,
-			'name_kiosk_page_id' => 0,
+			'pin_kiosk_page_id'       => 0,
+			'name_kiosk_page_id'      => 0,
+			'employee_times_page_id'  => 0,
+			'times_lookback_days'     => 21,
 		);
 	}
 
@@ -132,7 +142,11 @@ class Css_Tc_Plugin {
 	 * @return bool
 	 */
 	public static function user_can_manage() {
-		return current_user_can( 'manage_options' ) || current_user_can( self::admin_capability() );
+		if ( current_user_can( 'manage_options' ) || current_user_can( self::admin_capability() ) ) {
+			return true;
+		}
+		$user = wp_get_current_user();
+		return $user && in_array( 'time_clock_admin', (array) $user->roles, true );
 	}
 
 	public function load_textdomain() {
@@ -140,9 +154,27 @@ class Css_Tc_Plugin {
 	}
 
 	public function register_runtime() {
+		$this->corrections->register();
 		Css_Tc_Ajax::register();
 		Css_Tc_Admin::register();
 		Css_Tc_Shortcodes::register();
+	}
+
+	/**
+	 * Upgrades from 1.1.x get the employee times page without a reactivation.
+	 *
+	 * @return void
+	 */
+	public function maybe_create_times_page() {
+		if ( ! self::user_can_manage() ) {
+			return;
+		}
+		$settings = $this->get_settings();
+		$page_id  = isset( $settings['employee_times_page_id'] ) ? (int) $settings['employee_times_page_id'] : 0;
+		if ( $page_id && get_post_status( $page_id ) && 'trash' !== get_post_status( $page_id ) ) {
+			return;
+		}
+		Css_Tc_Shortcodes::create_public_pages();
 	}
 
 	public function maybe_missing_aio_notice() {
@@ -201,7 +233,7 @@ class Css_Tc_Plugin {
 			update_option( self::OPTION_KEY, wp_parse_args( $existing, self::default_settings() ), false );
 		}
 
-		Css_Tc_Shortcodes::create_kiosk_pages();
+		Css_Tc_Shortcodes::create_public_pages();
 	}
 
 	/**

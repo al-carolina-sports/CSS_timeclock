@@ -36,6 +36,10 @@ class Css_Tc_Ajax {
 		add_action( 'wp_ajax_css_tc_save_pin', array( $self, 'save_pin' ) );
 		add_action( 'wp_ajax_css_tc_clear_pin', array( $self, 'clear_pin' ) );
 		add_action( 'wp_ajax_css_tc_create_pages', array( $self, 'create_pages' ) );
+		add_action( 'wp_ajax_css_tc_review_correction', array( $self, 'review_correction' ) );
+
+		add_action( 'wp_ajax_css_tc_my_times', array( $self, 'my_times' ) );
+		add_action( 'wp_ajax_css_tc_suggest_edit', array( $self, 'suggest_edit' ) );
 	}
 
 	/**
@@ -226,7 +230,8 @@ class Css_Tc_Ajax {
 		$settings['pin_max_length']     = min( 12, max( $settings['pin_min_length'], isset( $_POST['pin_max_length'] ) ? absint( $_POST['pin_max_length'] ) : 8 ) );
 		$settings['rate_limit_max']     = min( 20, max( 3, isset( $_POST['rate_limit_max'] ) ? absint( $_POST['rate_limit_max'] ) : 5 ) );
 		$settings['rate_limit_window']  = min( 3600, max( 60, isset( $_POST['rate_limit_window'] ) ? absint( $_POST['rate_limit_window'] ) : 900 ) );
-		$settings['idle_reset_ms']      = min( 30000, max( 3000, isset( $_POST['idle_reset_ms'] ) ? absint( $_POST['idle_reset_ms'] ) : 8000 ) );
+		$settings['idle_reset_ms']         = min( 30000, max( 3000, isset( $_POST['idle_reset_ms'] ) ? absint( $_POST['idle_reset_ms'] ) : 8000 ) );
+		$settings['times_lookback_days']   = min( 60, max( 7, isset( $_POST['times_lookback_days'] ) ? absint( $_POST['times_lookback_days'] ) : 21 ) );
 
 		css_tc_addon()->update_settings( $settings );
 
@@ -290,12 +295,95 @@ class Css_Tc_Ajax {
 	public function create_pages() {
 		$this->verify_admin();
 
-		$ids = Css_Tc_Shortcodes::create_kiosk_pages();
+		$ids = Css_Tc_Shortcodes::create_public_pages();
 
 		wp_send_json_success(
 			array(
 				'message' => __( 'Kiosk pages are ready.', 'css-timeclock-addon' ),
 				'pages'   => $ids,
+			)
+		);
+	}
+
+	/**
+	 * Logged-in employee: their recent days only.
+	 *
+	 * @return void
+	 */
+	public function my_times() {
+		$this->verify_employee();
+		$user_id = get_current_user_id();
+		wp_send_json_success( css_tc_addon()->corrections->dashboard_for_user( $user_id ) );
+	}
+
+	/**
+	 * Logged-in employee: suggest an edit for one of their days.
+	 *
+	 * @return void
+	 */
+	public function suggest_edit() {
+		$this->verify_employee();
+
+		$user_id = get_current_user_id();
+		$result  = css_tc_addon()->corrections->submit(
+			$user_id,
+			array(
+				'work_date'     => isset( $_POST['work_date'] ) ? wp_unslash( $_POST['work_date'] ) : '',
+				'shift_id'      => isset( $_POST['shift_id'] ) ? wp_unslash( $_POST['shift_id'] ) : 0,
+				'proposed_in'   => isset( $_POST['proposed_in'] ) ? wp_unslash( $_POST['proposed_in'] ) : '',
+				'proposed_out'  => isset( $_POST['proposed_out'] ) ? wp_unslash( $_POST['proposed_out'] ) : '',
+				'out_next_day'  => ! empty( $_POST['out_next_day'] ),
+				'missing_punch' => ! empty( $_POST['missing_punch'] ),
+				'clear_out'     => ! empty( $_POST['clear_out'] ),
+				'reason'        => isset( $_POST['reason'] ) ? wp_unslash( $_POST['reason'] ) : '',
+			)
+		);
+
+		if ( is_wp_error( $result ) ) {
+			wp_send_json_error( array( 'message' => $result->get_error_message() ), 400 );
+		}
+
+		wp_send_json_success(
+			array(
+				'message'    => __( 'Suggestion sent. A supervisor will review it.', 'css-timeclock-addon' ),
+				'suggestion' => $result,
+				'dashboard'  => css_tc_addon()->corrections->dashboard_for_user( $user_id ),
+			)
+		);
+	}
+
+	/**
+	 * Admin: approve or reject a pending suggestion.
+	 *
+	 * @return void
+	 */
+	public function review_correction() {
+		$this->verify_admin();
+
+		$correction_id = isset( $_POST['correction_id'] ) ? absint( $_POST['correction_id'] ) : 0;
+		$decision      = isset( $_POST['decision'] ) ? sanitize_key( wp_unslash( $_POST['decision'] ) ) : '';
+		$note          = isset( $_POST['review_note'] ) ? wp_unslash( $_POST['review_note'] ) : '';
+		$reviewer_id   = get_current_user_id();
+
+		if ( 'approve' === $decision ) {
+			$result = css_tc_addon()->corrections->approve( $correction_id, $reviewer_id, $note );
+		} elseif ( 'reject' === $decision ) {
+			$result = css_tc_addon()->corrections->reject( $correction_id, $reviewer_id, $note );
+		} else {
+			wp_send_json_error( array( 'message' => __( 'Unknown review action.', 'css-timeclock-addon' ) ), 400 );
+		}
+
+		if ( is_wp_error( $result ) ) {
+			wp_send_json_error( array( 'message' => $result->get_error_message() ), 409 );
+		}
+
+		wp_send_json_success(
+			array(
+				'message'    => 'approve' === $decision
+					? __( 'Correction applied. The original times are kept on the suggestion for audit.', 'css-timeclock-addon' )
+					: __( 'Suggestion rejected. Punches were not changed.', 'css-timeclock-addon' ),
+				'suggestion' => $result,
+				'queue'      => css_tc_addon()->corrections->admin_queue(),
 			)
 		);
 	}
@@ -340,6 +428,19 @@ class Css_Tc_Ajax {
 		}
 		if ( ! Css_Tc_Plugin::user_can_manage() ) {
 			wp_send_json_error( array( 'message' => __( 'You do not have permission to manage kiosk settings.', 'css-timeclock-addon' ) ), 403 );
+		}
+	}
+
+	/**
+	 * @return void
+	 */
+	private function verify_employee() {
+		if ( ! check_ajax_referer( Css_Tc_Corrections::EMPLOYEE_NONCE, 'nonce', false ) ) {
+			wp_send_json_error( array( 'message' => __( 'Session expired. Refresh the page.', 'css-timeclock-addon' ) ), 403 );
+		}
+		$user_id = get_current_user_id();
+		if ( $user_id < 1 || ! css_tc_addon()->employees->can_view_own_times( $user_id ) ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to view these times.', 'css-timeclock-addon' ) ), 403 );
 		}
 	}
 }

@@ -7,7 +7,7 @@ WP Engine upload zip (plugin wrapped in a `css-timeclock-addon/` folder):
 - In-repo: [`dist/css-timeclock-addon.zip`](dist/css-timeclock-addon.zip)
 - Rebuild: `./bin/make-zip.sh`
 
-Phase 1 add-on for **All in One Time Clock Lite** (Codebangers, slug `aio-time-clock-lite`). It adds two shared-tablet kiosks so employees can clock in and out **without a WordPress login**.
+Add-on for **All in One Time Clock Lite** (Codebangers, slug `aio-time-clock-lite`). It adds shared-tablet kiosks so employees can clock in and out **without a WordPress login**, plus a logged-in employee times page with supervisor-approved corrections.
 
 This plugin does **not** fork or edit AIO Lite. It writes the same `shift` posts and meta AIO already uses, so **Time Clock Lite → Real Time Monitoring** still shows who is working.
 
@@ -18,17 +18,18 @@ This plugin does **not** fork or edit AIO Lite. It writes the same `shift` posts
 | License | GPLv2 or later |
 | AIO Lite | Soft dependency (admin notice if missing) |
 
-## What Phase 1 includes
+## What this plugin includes
 
 1. **PIN kiosk** — `[css_tc_pin_kiosk]` — large PIN pad, then Clock in / Clock out.
 2. **Name-list kiosk** — `[css_tc_name_kiosk]` — alphabetical employees, tap a name, **confirm with PIN**, then Clock in / Clock out.
 3. **Who’s working board** — on both kiosk pages (logged-out visitors). Side panel on wide screens; stacks under the pad on tablet widths. Lists **Working now** (with clock-in time) and **Not clocked in**. Refreshes every 20 seconds and immediately after a successful punch.
-4. Admin **Kiosk & PINs** screen (under Time Clock Lite when AIO is active, otherwise Settings).
-5. Per-employee PINs stored with `wp_hash_password()` / checked with `wp_check_password()`. Never plaintext.
-6. Failed-PIN rate limit by tablet IP.
-7. After a punch, a success message, then the kiosk returns to idle. No employee WordPress session is created.
+4. **My Time Clock** — `[css_tc_my_times]` — logged-in employees (AIO employee roles) see their recent punches by day and can **suggest an edit**. Suggestions stay pending until a supervisor reviews them.
+5. Admin **Kiosk & PINs** screen (under Time Clock Lite when AIO is active, otherwise Settings), including a **Corrections** queue. Approve writes the AIO-compatible shift and keeps an audit (original times, who suggested, who approved). Reject leaves punches unchanged.
+6. Per-employee PINs stored with `wp_hash_password()` / checked with `wp_check_password()`. Never plaintext.
+7. Failed-PIN rate limit by tablet IP.
+8. After a punch, a success message, then the kiosk returns to idle. No employee WordPress session is created.
 
-Phase 2+ (not in this build): multi-facility, locations, IP allowlist, bulletin / announcements, self-corrections, Pro features.
+Later (not in this build): multi-facility, locations, IP allowlist, bulletin / announcements, Pro features.
 
 ## How punches reach AIO Lite
 
@@ -64,12 +65,13 @@ An employee is **Working** in AIO monitoring when a shift has a clock-in time an
 4. Confirm **All in One Time Clock Lite** is also installed and active.
 5. WP Engine rules this plugin follows: no `exec` / shell, no ionCube, no code written to `uploads`, requests stay well under 60 seconds.
 
-On activation the plugin creates two pages if they do not already exist:
+On activation the plugin creates pages if they do not already exist:
 
 - `/pin-time-clock/` → `[css_tc_pin_kiosk]`
 - `/name-time-clock/` → `[css_tc_name_kiosk]`
+- `/my-time-clock/` → `[css_tc_my_times]`
 
-You can recreate them from **Time Clock Lite → Kiosk & PINs → Create or restore kiosk pages**.
+You can recreate them from **Time Clock Lite → Kiosk & PINs → Create or restore kiosk and times pages**.
 
 ## Set employee PINs
 
@@ -88,6 +90,16 @@ Employees without a PIN do not appear on the name-list kiosk. The PIN kiosk only
 4. Name kiosk: tap a name → enter that person’s PIN → Clock in or Clock out.
 5. The **Who’s working** board on the same page shows who is in or out. It updates after a punch without reloading the page.
 6. Wait for the success screen. The kiosk resets by itself (default 8 seconds).
+
+## Employee times and suggested edits
+
+1. Employees sign in to WordPress (their existing AIO employee user) and open **My Time Clock** (`/my-time-clock/`). This is a front-end page, not wp-admin.
+2. They see recent days (default 21), each day’s punches, and **Suggest edit**.
+3. A suggestion needs a proposed clock-in and/or clock-out, a required reason, and can mark a missing punch. Status is **pending** until reviewed. Employees only see their own times.
+4. A site admin, `time_clock_admin`, or anyone who can manage the kiosk opens **Time Clock Lite → Kiosk & PINs → Corrections**.
+5. **Approve** writes the corrected `employee_clock_in_time` / `employee_clock_out_time` on the AIO `shift` (or creates a shift for a missing punch). The suggestion keeps original times, the employee, the reviewer, and timestamps. **Reject** leaves punches unchanged and stores an optional note.
+
+The kiosk who’s-working board still reads the same open-shift rule after an approved correction.
 
 ## Verify against AIO monitoring
 
@@ -115,7 +127,7 @@ Do not commit real PINs. Treat them like passwords.
 
 ## Security
 
-- Public AJAX uses a nonce (`css_tc_kiosk`). Admin PIN screens require `edit_posts` when AIO is present (`manage_options` otherwise) plus an admin nonce.
+- Public AJAX uses a nonce (`css_tc_kiosk`). The employee times page uses a logged-in nonce (`css_tc_employee`); staff can only load or suggest edits for themselves. Admin PIN and correction screens require `manage_options`, `time_clock_admin`, or `edit_posts` when AIO is present, plus an admin nonce.
 - The public roster action (`css_tc_roster`) returns display names, in/out status, and clock-in times only — no PINs, emails, user IDs, or admin data. It is rate-limited separately from the PIN lock (40 requests / minute / IP) and cached for a few seconds.
 - Failed PINs are counted per client IP (transient). After the configured limit the IP is locked for the window (default 5 failures / 15 minutes).
 - PIN lookup errors are generic (“That PIN was not recognized”).
@@ -126,10 +138,10 @@ Do not commit real PINs. Treat them like passwords.
 
 ```
 css-timeclock-addon.php    Plugin bootstrap
-includes/                  Employees, PINs, punches, AJAX, admin, shortcodes
+includes/                  Employees, PINs, punches, corrections, AJAX, admin, shortcodes
 admin/                     Settings UI
 public/                    Kiosk markup, CSS, JS
-uninstall.php              Removes settings and hashed PINs only
+uninstall.php              Removes settings, hashed PINs, and correction posts (AIO shifts stay)
 ```
 
 ## Local zip

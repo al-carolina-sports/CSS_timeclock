@@ -9,7 +9,9 @@
  * @var string              $tab
  * @var string              $pin_page
  * @var string              $name_page
+ * @var string              $times_page
  * @var string              $base_url
+ * @var array<string,mixed> $queue
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -28,6 +30,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 		</a>
 		<a href="<?php echo esc_url( $base_url . '&tab=pins' ); ?>" class="nav-tab <?php echo 'pins' === $tab ? 'nav-tab-active' : ''; ?>">
 			<?php echo esc_html__( 'Employee PINs', 'css-timeclock-addon' ); ?>
+		</a>
+		<a href="<?php echo esc_url( $base_url . '&tab=corrections' ); ?>" class="nav-tab <?php echo 'corrections' === $tab ? 'nav-tab-active' : ''; ?>">
+			<?php echo esc_html__( 'Corrections', 'css-timeclock-addon' ); ?>
+			<?php if ( ! empty( $queue['pending_count'] ) ) : ?>
+				<span class="css-tc-tab-count"><?php echo esc_html( (string) (int) $queue['pending_count'] ); ?></span>
+			<?php endif; ?>
 		</a>
 	</nav>
 
@@ -88,6 +96,26 @@ if ( ! defined( 'ABSPATH' ) ) {
 					</td>
 				</tr>
 				<tr>
+					<th scope="row"><?php echo esc_html__( 'Employee times', 'css-timeclock-addon' ); ?></th>
+					<td>
+						<p class="description">
+							<?php echo esc_html__( 'Shortcode:', 'css-timeclock-addon' ); ?>
+							<code>[css_tc_my_times]</code>
+							<?php if ( $times_page ) : ?>
+								— <a href="<?php echo esc_url( $times_page ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__( 'Open employee times page', 'css-timeclock-addon' ); ?></a>
+							<?php endif; ?>
+						</p>
+						<p class="description"><?php echo esc_html__( 'Logged-in employees can view their own punches and suggest edits. Supervisors approve them on the Corrections tab.', 'css-timeclock-addon' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="times_lookback_days"><?php echo esc_html__( 'Times lookback', 'css-timeclock-addon' ); ?></label></th>
+					<td>
+						<input name="times_lookback_days" id="times_lookback_days" type="number" min="7" max="60" value="<?php echo esc_attr( (string) ( isset( $settings['times_lookback_days'] ) ? $settings['times_lookback_days'] : 21 ) ); ?>" class="small-text" />
+						<?php echo esc_html__( 'days of punches employees can see and suggest edits for.', 'css-timeclock-addon' ); ?>
+					</td>
+				</tr>
+				<tr>
 					<th scope="row"><label for="idle_reset_ms"><?php echo esc_html__( 'Return to idle', 'css-timeclock-addon' ); ?></label></th>
 					<td>
 						<input name="idle_reset_ms" id="idle_reset_ms" type="number" min="3000" max="30000" step="500" value="<?php echo esc_attr( (string) $settings['idle_reset_ms'] ); ?>" class="small-text" />
@@ -98,7 +126,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 			<p class="submit">
 				<button type="submit" class="button button-primary"><?php echo esc_html__( 'Save settings', 'css-timeclock-addon' ); ?></button>
-				<button type="button" class="button css-tc-create-pages"><?php echo esc_html__( 'Create or restore kiosk pages', 'css-timeclock-addon' ); ?></button>
+				<button type="button" class="button css-tc-create-pages"><?php echo esc_html__( 'Create or restore kiosk and times pages', 'css-timeclock-addon' ); ?></button>
 			</p>
 		</form>
 
@@ -108,7 +136,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 				<?php echo esc_html__( 'AIO Lite’s clock AJAX only runs for a logged-in WordPress user. This add-on does not call that AJAX and does not edit AIO files. After a valid PIN it creates or closes the same shift custom posts AIO uses (post type shift, author = employee, meta employee_clock_in_time / employee_clock_out_time). Time Clock Lite → Real Time Monitoring lists anyone whose clock-out meta is still empty.', 'css-timeclock-addon' ); ?>
 			</p>
 		</div>
-	<?php else : ?>
+	<?php elseif ( 'pins' === $tab ) : ?>
 		<p>
 			<?php echo esc_html__( 'PINs are stored with WordPress password hashing. They are never saved in plaintext. Each PIN must be unique. Employees without a PIN do not appear on the name-list kiosk.', 'css-timeclock-addon' ); ?>
 		</p>
@@ -172,5 +200,37 @@ if ( ! defined( 'ABSPATH' ) ) {
 			<?php endif; ?>
 			</tbody>
 		</table>
+	<?php else : ?>
+		<p>
+			<?php echo esc_html__( 'Employees suggest clock-in or clock-out corrections from My Time Clock. Approving writes the AIO-compatible shift and keeps the original times plus who suggested and who approved.', 'css-timeclock-addon' ); ?>
+		</p>
+
+		<h2><?php echo esc_html__( 'Pending', 'css-timeclock-addon' ); ?></h2>
+		<div class="css-tc-correction-list" data-role="pending-list">
+			<?php if ( empty( $queue['pending'] ) ) : ?>
+				<p class="description css-tc-empty-queue"><?php echo esc_html__( 'No pending suggestions.', 'css-timeclock-addon' ); ?></p>
+			<?php else : ?>
+				<?php foreach ( $queue['pending'] as $item ) : ?>
+					<?php
+					$item_status = 'pending';
+					include CSS_TC_ADDON_DIR . 'admin/views/correction-card.php';
+					?>
+				<?php endforeach; ?>
+			<?php endif; ?>
+		</div>
+
+		<h2><?php echo esc_html__( 'Recently reviewed', 'css-timeclock-addon' ); ?></h2>
+		<div class="css-tc-correction-list" data-role="recent-list">
+			<?php if ( empty( $queue['recent'] ) ) : ?>
+				<p class="description css-tc-empty-queue"><?php echo esc_html__( 'No reviewed suggestions yet.', 'css-timeclock-addon' ); ?></p>
+			<?php else : ?>
+				<?php foreach ( $queue['recent'] as $item ) : ?>
+					<?php
+					$item_status = isset( $item['status'] ) ? $item['status'] : '';
+					include CSS_TC_ADDON_DIR . 'admin/views/correction-card.php';
+					?>
+				<?php endforeach; ?>
+			<?php endif; ?>
+		</div>
 	<?php endif; ?>
 </div>

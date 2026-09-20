@@ -54,6 +54,7 @@
         rate_limit_max: form.rate_limit_max.value,
         rate_limit_window: form.rate_limit_window.value,
         idle_reset_ms: form.idle_reset_ms.value,
+        times_lookback_days: form.times_lookback_days ? form.times_lookback_days.value : 21,
       };
       post("css_tc_save_settings", data)
         .then(function (result) {
@@ -140,8 +141,47 @@
     }
   }
 
+  function bindCorrections() {
+    var root = document.querySelector(".css-tc-admin");
+    if (!root) {
+      return;
+    }
+
+    root.addEventListener("click", function (event) {
+      var button = event.target.closest("[data-decision]");
+      if (!button) {
+        return;
+      }
+      var form = button.closest(".css-tc-review-form");
+      var card = button.closest(".css-tc-correction");
+      if (!form || !card) {
+        return;
+      }
+      var decision = button.getAttribute("data-decision");
+      if (decision === "reject" && !window.confirm((cfg.strings && cfg.strings.confirmReject) || "Reject?")) {
+        return;
+      }
+      var note = form.querySelector("[name='review_note']");
+      post("css_tc_review_correction", {
+        correction_id: card.getAttribute("data-correction-id"),
+        decision: decision,
+        review_note: note ? note.value : "",
+      })
+        .then(function (result) {
+          notice(result.message || (cfg.strings && cfg.strings.saved));
+          if (result.queue) {
+            window.location.reload();
+          }
+        })
+        .catch(function (err) {
+          notice(err.message, true);
+        });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     bindSettings();
     bindPins();
+    bindCorrections();
   });
 })();

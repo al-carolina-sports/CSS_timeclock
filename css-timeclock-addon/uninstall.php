@@ -1,6 +1,6 @@
 <?php
 /**
- * Remove add-on options and hashed PINs. Leaves AIO shift posts untouched.
+ * Remove add-on options, hashed PINs, and correction posts. Leaves AIO shift posts untouched.
  *
  * @package CssTimeclockAddon
  */
@@ -10,6 +10,18 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 }
 
 delete_option( 'css_tc_addon_settings' );
+
+$correction_ids = get_posts(
+	array(
+		'post_type'      => 'css_tc_correction',
+		'post_status'    => 'any',
+		'posts_per_page' => 500,
+		'fields'         => 'ids',
+	)
+);
+foreach ( $correction_ids as $correction_id ) {
+	wp_delete_post( (int) $correction_id, true );
+}
 
 $user_ids = get_users(
 	array(
