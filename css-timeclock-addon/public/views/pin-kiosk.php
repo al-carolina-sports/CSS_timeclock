@@ -71,6 +71,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 			</section>
 		</div>
 	<?php endif; ?>
-		<?php include CSS_TC_ADDON_DIR . 'public/views/status-board.php'; ?>
+		<?php
+		// Must stay inside .css-tc-kiosk so StatusBoard finds [data-role="board"].
+		include CSS_TC_ADDON_DIR . 'public/views/status-board.php';
+		?>
 	</div>
 </div>

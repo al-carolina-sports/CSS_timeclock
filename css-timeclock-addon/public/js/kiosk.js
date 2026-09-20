@@ -338,8 +338,7 @@
         self.showSuccess(data);
         if (self.board && data.board && typeof self.board.apply === "function") {
           self.board.apply(data.board);
-        }
-        if (self.board && typeof self.board.refresh === "function") {
+        } else if (self.board && typeof self.board.refresh === "function") {
           self.board.refresh();
         }
       })
@@ -454,6 +453,8 @@
     });
   };
 
+  // StatusBoard no-ops without [data-role="board"] (included by pin/name kiosks).
+  // Pass that instance into Kiosk so punch success can apply data.board immediately.
   document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll(".css-tc-kiosk").forEach(function (root) {
       var board = new StatusBoard(root);

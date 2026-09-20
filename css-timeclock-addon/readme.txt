@@ -26,8 +26,9 @@ This plugin does not modify aio-time-clock-lite files.
 == Changelog ==
 
 = 1.2.1 =
-* Who's-working board finds open shifts with the same PHP empty clock-out check as punch status (no WP_Query empty-string meta_query).
-* Punch AJAX returns a fresh board payload so the kiosk updates immediately after clock-in/out.
+* Who's-working board finds open shifts with the same PHP empty clock-out check as punch status and AIO monitoring (no WP_Query empty-string meta_query).
+* Punch AJAX returns a fresh board payload so the kiosk paints Who's working immediately (no second roster request).
+* Public roster transient is skipped so WP Engine cannot serve a stale empty board.
 
 = 1.2.0 =
 * Employee My Time Clock page: view own punches by day and suggest edits.

@@ -22,7 +22,7 @@ class Css_Tc_Punches {
 
 	const POST_TYPE        = 'shift';
 	const ROSTER_CACHE_KEY = 'css_tc_roster_public';
-	const ROSTER_CACHE_TTL = 8;
+	const ROSTER_CACHE_TTL = 8; // Unused: public_board() skips the transient until a cache is proven necessary.
 
 	/**
 	 * @param int $user_id Employee user ID.
@@ -100,8 +100,8 @@ class Css_Tc_Punches {
 		}
 
 		update_post_meta( $shift_id, 'employee_clock_in_time', $now );
-		// Empty string, not null: update_post_meta( ..., null ) stores SQL NULL,
-		// which WP_Query meta_query (NOT EXISTS OR = '') will not match.
+		// AIO Lite also writes null here. Prefer '' so new rows are a real empty
+		// string. Existing SQL NULL rows must still count as open via PHP filter.
 		update_post_meta( $shift_id, 'employee_clock_out_time', '' );
 
 		$department = css_tc_addon()->employees->department( $user_id );
@@ -179,11 +179,11 @@ class Css_Tc_Punches {
 	/**
 	 * Whether clock-in / clock-out meta describes an open shift.
 	 *
-	 * Same rule as AIO monitoring and open_shift_for(): clock-in is set and
-	 * clock-out is empty. PHP empty() treats '', null, and missing values as
-	 * empty. Do not replace this with a WP_Query empty-string meta_query —
-	 * rows stored as SQL NULL (from update_post_meta( ..., null )) exist in
-	 * postmeta but match neither NOT EXISTS nor meta_value = ''.
+	 * Same rule as AIO Real Time Monitoring (aio-monitoring.php) and
+	 * open_shift_for(): clock-in is set and clock-out is null or ''. PHP
+	 * empty() treats '', null, and missing get_post_meta values as empty.
+	 * Do not replace this with a WP_Query empty-string meta_query — a row
+	 * with SQL NULL exists, so NOT EXISTS fails and meta_value = '' fails.
 	 *
 	 * @param mixed $clock_in  employee_clock_in_time meta.
 	 * @param mixed $clock_out employee_clock_out_time meta.
@@ -196,7 +196,8 @@ class Css_Tc_Punches {
 	/**
 	 * Open shifts keyed by employee user ID (AIO: clock-in set, clock-out empty).
 	 *
-	 * Loads recent shift posts, then filters in PHP with is_open_shift_meta().
+	 * Loads recent shift posts (no clock-out meta_query), then filters in PHP
+	 * with is_open_shift_meta() — same approach as open_shift_for() and AIO.
 	 *
 	 * @return array<int,array{clock_in_time:string}>
 	 */
@@ -244,10 +245,9 @@ class Css_Tc_Punches {
 	 * @return array{working:array<int,array<string,string>>,out:array<int,array<string,string>>,working_count:int,out_count:int,generated_at:string}
 	 */
 	public function public_board() {
-		$cached = get_transient( self::ROSTER_CACHE_KEY );
-		if ( is_array( $cached ) && isset( $cached['working'], $cached['out'] ) ) {
-			return $cached;
-		}
+		// No get_transient / set_transient until a cache is proven necessary.
+		// WP Engine object cache can keep a stale empty css_tc_roster_public
+		// after delete_transient(), which made punch + roster disagree.
 
 		$employees = css_tc_addon()->employees->list_for_board();
 		$open      = $this->open_shifts_by_author();
@@ -309,13 +309,11 @@ class Css_Tc_Punches {
 		 */
 		$payload = apply_filters( 'css_tc_public_board', $payload );
 
-		set_transient( self::ROSTER_CACHE_KEY, $payload, self::ROSTER_CACHE_TTL );
-
 		return $payload;
 	}
 
 	/**
-	 * Drop the short-lived public board cache after a punch.
+	 * Drop any leftover css_tc_roster_public transient from older versions.
 	 *
 	 * @return void
 	 */
