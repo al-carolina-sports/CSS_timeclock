@@ -128,7 +128,7 @@ Do not commit real PINs. Treat them like passwords.
 ## Security
 
 - Public AJAX uses a nonce (`css_tc_kiosk`). The employee times page uses a logged-in nonce (`css_tc_employee`); staff can only load or suggest edits for themselves. Admin PIN and correction screens require `manage_options`, `time_clock_admin`, or `edit_posts` when AIO is present, plus an admin nonce.
-- The public roster action (`css_tc_roster`) returns display names, in/out status, and clock-in times only — no PINs, emails, user IDs, or admin data. It is rate-limited separately from the PIN lock (40 requests / minute / IP) and cached for a few seconds.
+- The public roster action (`css_tc_roster`) returns display names, in/out status, and clock-in times only — no PINs, emails, user IDs, or admin data. It is rate-limited separately from the PIN lock (40 requests / minute / IP). The board is not transient-cached; a successful punch returns a fresh board payload.
 - Failed PINs are counted per client IP (transient). After the configured limit the IP is locked for the window (default 5 failures / 15 minutes).
 - PIN lookup errors are generic (“That PIN was not recognized”).
 - All kiosk output is escaped; all input is sanitized. PINs are digits-only before hashing.

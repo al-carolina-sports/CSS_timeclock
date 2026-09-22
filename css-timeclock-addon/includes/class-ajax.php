@@ -169,7 +169,8 @@ class Css_Tc_Ajax {
 			wp_send_json_error( array( 'message' => $result->get_error_message() ), 409 );
 		}
 
-		$result['name'] = css_tc_addon()->employees->greeting_name( $user_id );
+		$result['name']  = css_tc_addon()->employees->greeting_name( $user_id );
+		$result['board'] = css_tc_addon()->punches->public_board();
 		wp_send_json_success( $result );
 	}
 

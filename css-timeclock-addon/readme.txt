@@ -4,7 +4,7 @@ Tags: time clock, kiosk, pin, employee, aio time clock
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -24,6 +24,11 @@ This plugin does not modify aio-time-clock-lite files.
 4. Set employee PINs under Time Clock Lite → Kiosk & PINs.
 
 == Changelog ==
+
+= 1.2.1 =
+* Who's-working board finds open shifts with the same PHP empty clock-out check as punch status and AIO monitoring (no WP_Query empty-string meta_query).
+* Punch AJAX returns a fresh board payload so the kiosk paints Who's working immediately (no second roster request).
+* Public roster transient is skipped so WP Engine cannot serve a stale empty board.
 
 = 1.2.0 =
 * Employee My Time Clock page: view own punches by day and suggest edits.
