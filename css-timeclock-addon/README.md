@@ -88,8 +88,9 @@ Employees without a PIN do not appear on the name-list kiosk. The PIN kiosk only
 2. Enable the matching kiosk on the settings tab if a page says it is turned off.
 3. PIN kiosk: enter PIN → **Continue** → Clock in or Clock out.
 4. Name kiosk: tap a name → enter that person’s PIN → Clock in or Clock out.
-5. The **Who’s working** board on the same page shows who is in or out. It updates after a punch without reloading the page.
-6. Wait for the success screen. The kiosk resets by itself (default 8 seconds).
+5. A USB keyboard or numeric keypad works on the PIN screen (both kiosks). Digit keys and numpad 0–9 append, Backspace or Delete removes the last digit, and Enter submits (same as **Continue**). Length still follows the configured minimum and maximum. Escape on the PIN screen clears the digits and stays on that screen (same as **Clear**). On the name kiosk, the on-screen **Cancel** button is what returns to the name list. On the Clock in / Clock out screen, Escape cancels. On the success screen (which has no Cancel button), Escape returns to the idle screen immediately. Keys are ignored while the cursor is in the name search field, while a request is in progress, while the kiosk is turned off, and off the PIN screen (Escape on the action and success screens still works). On-screen pad buttons are unchanged.
+6. The **Who’s working** board on the same page shows who is in or out. It updates after a punch without reloading the page.
+7. Wait for the success screen. The kiosk resets by itself (default 8 seconds).
 
 ## Employee times and suggested edits
 
