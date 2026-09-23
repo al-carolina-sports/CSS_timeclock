@@ -77,8 +77,8 @@ You can recreate them from **Time Clock Lite → Kiosk & PINs → Create or rest
 
 1. Create WordPress users with AIO roles (`employee`, `volunteer`, `manager`, `contractor`, or the `aio_tc_*` / `time_clock_admin` aliases).
 2. Open **Time Clock Lite → Kiosk & PINs → Employee PINs** (administrators can also use **Settings → Time Clock Kiosk**).
-3. Enter a 4–8 digit PIN (unique per employee) and **Save PIN**.
-4. The digits are hashed immediately. They cannot be viewed later — only replaced or cleared.
+3. Enter a 4–8 digit PIN (unique per employee) and **Save PIN**. The field is masked. The eye button on the field shows the digits while you type, and click it again to hide them.
+4. The digits are hashed immediately with `wp_hash_password()`. A saved PIN can only be replaced or cleared. The eye never reads a stored PIN back.
 
 Employees without a PIN do not appear on the name-list kiosk. The PIN kiosk only resolves people who have a hashed PIN.
 

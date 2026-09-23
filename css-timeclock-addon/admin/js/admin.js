@@ -92,16 +92,38 @@
     }
   }
 
+  function setPinRevealed(input, toggle, revealed) {
+    if (!input || !toggle) {
+      return;
+    }
+    var strings = cfg.strings || {};
+    input.type = revealed ? "text" : "password";
+    toggle.setAttribute("aria-pressed", revealed ? "true" : "false");
+    toggle.setAttribute("aria-label", revealed ? strings.hidePin || "Hide PIN" : strings.showPin || "Show PIN");
+  }
+
   function bindPins() {
     document.querySelectorAll(".css-tc-pin-form").forEach(function (form) {
+      var input = form.querySelector(".css-tc-pin-input");
+      var toggle = form.querySelector(".css-tc-pin-toggle");
+
+      if (input && toggle) {
+        toggle.addEventListener("mousedown", function (event) {
+          event.preventDefault();
+        });
+        toggle.addEventListener("click", function () {
+          setPinRevealed(input, toggle, input.type === "password");
+        });
+      }
+
       form.addEventListener("submit", function (event) {
         event.preventDefault();
-        var input = form.querySelector(".css-tc-pin-input");
         var pin = input ? input.value : "";
         post("css_tc_save_pin", { user_id: form.getAttribute("data-user-id"), pin: pin })
           .then(function (result) {
             if (input) {
               input.value = "";
+              setPinRevealed(input, toggle, false);
             }
             updateStatus(form.closest("tr"), true);
             notice(result.message || (cfg.strings && cfg.strings.saved));

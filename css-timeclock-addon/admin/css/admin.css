@@ -32,8 +32,69 @@
 	align-items: center;
 }
 
+.css-tc-admin .css-tc-pin-field {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+}
+
 .css-tc-admin .css-tc-pin-input {
-	width: 120px;
+	width: 140px;
+	margin: 0;
+	padding-right: 34px;
+}
+
+.css-tc-admin .css-tc-pin-input::-ms-reveal,
+.css-tc-admin .css-tc-pin-input::-ms-clear {
+	display: none;
+}
+
+.css-tc-admin .css-tc-pin-toggle {
+	position: absolute;
+	top: 1px;
+	right: 1px;
+	bottom: 1px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 0 3px 3px 0;
+	background: transparent;
+	box-shadow: none;
+	color: #50575e;
+	line-height: 1;
+	min-height: 0;
+	cursor: pointer;
+}
+
+.css-tc-admin .css-tc-pin-toggle:hover,
+.css-tc-admin .css-tc-pin-toggle:focus {
+	background: #f0f0f1;
+	color: #1d2327;
+	box-shadow: none;
+	outline: 2px solid #2271b1;
+	outline-offset: -2px;
+}
+
+.css-tc-admin .css-tc-pin-toggle svg {
+	display: block;
+	width: 18px;
+	height: 18px;
+}
+
+.css-tc-admin .css-tc-pin-toggle__hide {
+	display: none;
+}
+
+.css-tc-admin .css-tc-pin-toggle[aria-pressed="true"] .css-tc-pin-toggle__show {
+	display: none;
+}
+
+.css-tc-admin .css-tc-pin-toggle[aria-pressed="true"] .css-tc-pin-toggle__hide {
+	display: block;
 }
 
 .css-tc-admin .css-tc-pill {
@@ -115,7 +176,8 @@
 		align-items: stretch;
 	}
 
-	.css-tc-admin .css-tc-pin-input {
+	.css-tc-admin .css-tc-pin-field,
+	.css-tc-admin .css-tc-pin-field .css-tc-pin-input {
 		width: 100%;
 	}
 }

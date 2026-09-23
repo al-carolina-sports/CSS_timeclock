@@ -87,6 +87,8 @@ class Css_Tc_Admin {
 					'error'        => __( 'Something went wrong. Try again.', 'css-timeclock-addon' ),
 					'notSet'       => __( 'Not set', 'css-timeclock-addon' ),
 					'set'          => __( 'Set', 'css-timeclock-addon' ),
+					'showPin'      => __( 'Show PIN', 'css-timeclock-addon' ),
+					'hidePin'      => __( 'Hide PIN', 'css-timeclock-addon' ),
 					'confirmReject'=> __( 'Reject this suggestion? Punches will stay unchanged.', 'css-timeclock-addon' ),
 					'approved'     => __( 'Approved', 'css-timeclock-addon' ),
 					'rejected'     => __( 'Rejected', 'css-timeclock-addon' ),
