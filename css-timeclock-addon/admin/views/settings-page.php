@@ -95,6 +95,57 @@ if ( ! defined( 'ABSPATH' ) ) {
 						<?php echo esc_html__( 'seconds.', 'css-timeclock-addon' ); ?>
 					</td>
 				</tr>
+				<?php
+				$office_ip       = css_tc_addon()->pins->client_ip();
+				$office_raw      = isset( $settings['ip_allowlist'] ) ? (string) $settings['ip_allowlist'] : '';
+				$office_parsed   = css_tc_addon()->pins->parse_allowlist( $office_raw );
+				$office_enforcing = ! empty( $settings['ip_allowlist_enabled'] ) && ! empty( $office_parsed['entries'] );
+				$office_here     = css_tc_addon()->pins->is_client_allowed();
+				?>
+				<tr>
+					<th scope="row"><?php echo esc_html__( 'Office IP allowlist', 'css-timeclock-addon' ); ?></th>
+					<td>
+						<label>
+							<input type="checkbox" name="ip_allowlist_enabled" value="1" <?php checked( ! empty( $settings['ip_allowlist_enabled'] ) ); ?> />
+							<?php echo esc_html__( 'Only allow kiosk punches from these networks', 'css-timeclock-addon' ); ?>
+						</label>
+						<p class="description">
+							<?php echo esc_html__( 'Off, or on with an empty list, allows every network. Comments and blank lines do not count as addresses, so turning this on with an empty box does not lock the sandbox out. WordPress admin, PIN management, and corrections stay available from any IP.', 'css-timeclock-addon' ); ?>
+						</p>
+						<label for="ip_allowlist" class="screen-reader-text"><?php echo esc_html__( 'Allowed IPs and CIDR ranges', 'css-timeclock-addon' ); ?></label>
+						<textarea name="ip_allowlist" id="ip_allowlist" rows="6" class="large-text code css-tc-allowlist" placeholder="<?php echo esc_attr__( '203.0.113.10', 'css-timeclock-addon' ); ?>"><?php echo esc_textarea( $office_raw ); ?></textarea>
+						<p class="description">
+							<?php echo esc_html__( 'One IPv4 or IPv6 address or CIDR per line (for example 203.0.113.10 or 203.0.113.0/24). Lines starting with # are comments.', 'css-timeclock-addon' ); ?>
+						</p>
+						<p class="description">
+							<?php echo esc_html__( 'Uses the same client IP as the failed-PIN limit. On WP Engine that is the visitor in X-Forwarded-For (the platform proxy), not the load balancer in REMOTE_ADDR. Another proxy in front of WP Engine must forward the real client address or the tablets will not match this list.', 'css-timeclock-addon' ); ?>
+						</p>
+						<?php if ( '' !== $office_ip ) : ?>
+							<p class="description">
+								<?php
+								echo esc_html(
+									sprintf(
+										/* translators: %s: IP address seen by this admin browser */
+										__( 'This browser’s address for the allowlist is %s.', 'css-timeclock-addon' ),
+										$office_ip
+									)
+								);
+								?>
+							</p>
+						<?php else : ?>
+							<p class="description"><?php echo esc_html__( 'This browser’s address could not be read. Kiosk checks use the same lookup.', 'css-timeclock-addon' ); ?></p>
+						<?php endif; ?>
+						<?php if ( $office_enforcing && ! $office_here ) : ?>
+							<p class="description css-tc-allowlist-warn">
+								<?php echo esc_html__( 'Kiosk punches from this browser will be refused until this address is listed. This admin screen is not blocked.', 'css-timeclock-addon' ); ?>
+							</p>
+						<?php elseif ( ! empty( $settings['ip_allowlist_enabled'] ) && empty( $office_parsed['entries'] ) ) : ?>
+							<p class="description">
+								<?php echo esc_html__( 'The checkbox is on, but there are no addresses yet, so kiosks still allow every network.', 'css-timeclock-addon' ); ?>
+							</p>
+						<?php endif; ?>
+					</td>
+				</tr>
 				<tr>
 					<th scope="row"><?php echo esc_html__( 'Employee times', 'css-timeclock-addon' ); ?></th>
 					<td>

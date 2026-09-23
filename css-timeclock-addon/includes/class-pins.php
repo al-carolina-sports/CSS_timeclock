@@ -158,14 +158,304 @@ class Css_Tc_Pins {
 	}
 
 	/**
+	 * Client address used for failed-PIN rate limits and the office allowlist.
+	 *
+	 * WP Engine (and a reverse proxy in front of it) puts the visitor in
+	 * X-Forwarded-For; REMOTE_ADDR is often the load balancer. This helper
+	 * trusts that forwarded address so both features see the same IP the
+	 * tablet actually uses. Order: first address in X-Forwarded-For, then
+	 * True-Client-IP, then X-Real-IP, then REMOTE_ADDR.
+	 *
+	 * A proxy must overwrite or append the real client. If it does not, every
+	 * request looks like the proxy and an office list will not match the
+	 * tablets. Direct clients that can set X-Forwarded-For themselves could
+	 * spoof an allowed address — on WP Engine they reach PHP only through the
+	 * platform proxy, which is what this trusts.
+	 *
+	 * @return string Canonical IPv4 or IPv6, or empty when none is valid.
+	 */
+	public function client_ip() {
+		$forwarded_keys = array(
+			'HTTP_X_FORWARDED_FOR',
+			'HTTP_TRUE_CLIENT_IP',
+			'HTTP_X_REAL_IP',
+		);
+
+		foreach ( $forwarded_keys as $key ) {
+			$ip = $this->ip_from_server_value( $key );
+			if ( '' !== $ip ) {
+				return $ip;
+			}
+		}
+
+		return $this->ip_from_server_value( 'REMOTE_ADDR' );
+	}
+
+	/**
+	 * First valid IP in a server value. Comma-separated chains use the first
+	 * address only (WP Engine puts the visitor first and may include proxies
+	 * after it). Later addresses are not scanned, so a caller cannot skip an
+	 * invalid token and substitute their own later IP.
+	 *
+	 * @param string $key $_SERVER key.
+	 * @return string
+	 */
+	private function ip_from_server_value( $key ) {
+		if ( empty( $_SERVER[ $key ] ) || ! is_string( $_SERVER[ $key ] ) ) {
+			return '';
+		}
+
+		$raw = function_exists( 'wp_unslash' ) ? wp_unslash( $_SERVER[ $key ] ) : $_SERVER[ $key ];
+		$raw = trim( (string) $raw );
+		if ( '' === $raw ) {
+			return '';
+		}
+
+		$first = $raw;
+		$comma = strpos( $raw, ',' );
+		if ( false !== $comma ) {
+			$first = substr( $raw, 0, $comma );
+		}
+
+		return $this->canonical_ip( $first );
+	}
+
+	/**
 	 * @return string
 	 */
 	public function client_key() {
-		$ip = '';
-		if ( ! empty( $_SERVER['REMOTE_ADDR'] ) ) {
-			$ip = sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) );
-		}
+		$ip = $this->client_ip();
 		return 'css_tc_' . md5( $ip . '|' . (string) wp_parse_url( home_url(), PHP_URL_HOST ) );
+	}
+
+	/**
+	 * Whether this request may use kiosk endpoints.
+	 *
+	 * Allowlist off, or on with no addresses (blank or comments only), allows
+	 * every client so a new sandbox is not locked out. Enforcement never
+	 * includes the address in a client-facing error.
+	 *
+	 * @return bool
+	 */
+	public function is_client_allowed() {
+		$settings = css_tc_addon()->get_settings();
+		$raw      = isset( $settings['ip_allowlist'] ) ? (string) $settings['ip_allowlist'] : '';
+		return $this->ip_allowed_by_list( $this->client_ip(), ! empty( $settings['ip_allowlist_enabled'] ), $raw );
+	}
+
+	/**
+	 * @param string $ip      Candidate address.
+	 * @param bool   $enabled Allowlist checkbox.
+	 * @param string $raw     Textarea contents.
+	 * @return bool
+	 */
+	public function ip_allowed_by_list( $ip, $enabled, $raw ) {
+		if ( ! $enabled ) {
+			return true;
+		}
+
+		$parsed = $this->parse_allowlist( $raw );
+		if ( empty( $parsed['entries'] ) ) {
+			return true;
+		}
+
+		if ( '' === $this->canonical_ip( $ip ) ) {
+			return false;
+		}
+
+		foreach ( $parsed['entries'] as $entry ) {
+			if ( $this->ip_in_entry( $ip, $entry ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Split an allowlist into valid entries and rejected lines.
+	 *
+	 * Blank lines and lines whose first non-space character is # are comments.
+	 * A # later on a line starts an inline comment. Entries are one IPv4 or
+	 * IPv6 address, or CIDR, per line.
+	 *
+	 * @param string $raw Textarea contents.
+	 * @return array{entries: array<int,string>, invalid: array<int,string>}
+	 */
+	public function parse_allowlist( $raw ) {
+		$entries = array();
+		$invalid = array();
+		$lines   = preg_split( '/\r\n|\r|\n/', (string) $raw );
+		if ( ! is_array( $lines ) ) {
+			$lines = array();
+		}
+
+		foreach ( $lines as $line ) {
+			$line = trim( (string) $line );
+			if ( '' === $line || '#' === substr( $line, 0, 1 ) ) {
+				continue;
+			}
+
+			$hash = strpos( $line, '#' );
+			if ( false !== $hash ) {
+				$line = trim( substr( $line, 0, $hash ) );
+			}
+			if ( '' === $line ) {
+				continue;
+			}
+
+			$normalized = $this->normalize_allowlist_entry( $line );
+			if ( '' === $normalized ) {
+				$invalid[] = $line;
+				continue;
+			}
+			$entries[] = $normalized;
+		}
+
+		return array(
+			'entries' => array_values( array_unique( $entries ) ),
+			'invalid' => $invalid,
+		);
+	}
+
+	/**
+	 * @param string $ip    Client address.
+	 * @param string $entry Canonical address or CIDR from parse_allowlist().
+	 * @return bool
+	 */
+	public function ip_in_entry( $ip, $entry ) {
+		$ip = $this->canonical_ip( $ip );
+		if ( '' === $ip || ! is_string( $entry ) || '' === $entry ) {
+			return false;
+		}
+
+		$bits    = null;
+		$network = $entry;
+		$slash   = strpos( $entry, '/' );
+		if ( false !== $slash ) {
+			$network = substr( $entry, 0, $slash );
+			$bits    = (int) substr( $entry, $slash + 1 );
+		}
+
+		$network = $this->canonical_ip( $network );
+		if ( '' === $network ) {
+			return false;
+		}
+
+		if ( null === $bits ) {
+			return $ip === $network;
+		}
+
+		return $this->cidr_match( $ip, $network, $bits );
+	}
+
+	/**
+	 * @param string $line One non-comment line.
+	 * @return string Canonical entry, or empty when invalid.
+	 */
+	private function normalize_allowlist_entry( $line ) {
+		$line = trim( $line );
+		$bits = null;
+		$ip   = $line;
+		$slash = strpos( $line, '/' );
+		if ( false !== $slash ) {
+			$ip      = trim( substr( $line, 0, $slash ) );
+			$bit_raw = trim( substr( $line, $slash + 1 ) );
+			if ( '' === $bit_raw || ! preg_match( '/^\d+$/', $bit_raw ) ) {
+				return '';
+			}
+			$bits = (int) $bit_raw;
+		}
+
+		$ip = $this->canonical_ip( $ip );
+		if ( '' === $ip ) {
+			return '';
+		}
+
+		if ( null === $bits ) {
+			return $ip;
+		}
+
+		$max = false !== strpos( $ip, ':' ) ? 128 : 32;
+		if ( $bits < 0 || $bits > $max ) {
+			return '';
+		}
+
+		return $ip . '/' . $bits;
+	}
+
+	/**
+	 * Validate and canonicalize an IP. IPv4-mapped IPv6 becomes IPv4 so an
+	 * office IPv4 entry matches proxies that wrap it.
+	 *
+	 * @param string $ip Raw address.
+	 * @return string
+	 */
+	public function canonical_ip( $ip ) {
+		$ip = trim( (string) $ip );
+		if ( '' === $ip ) {
+			return '';
+		}
+
+		if ( preg_match( '/^\[([^\]]+)\](?::\d+)?$/', $ip, $bracket ) ) {
+			$ip = $bracket[1];
+		} elseif ( preg_match( '/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/', $ip, $v4port ) ) {
+			$ip = $v4port[1];
+		}
+
+		$zone = strpos( $ip, '%' );
+		if ( false !== $zone ) {
+			$ip = substr( $ip, 0, $zone );
+		}
+
+		$ip = trim( $ip );
+		if ( ! filter_var( $ip, FILTER_VALIDATE_IP ) ) {
+			return '';
+		}
+
+		$bin = inet_pton( $ip );
+		if ( false === $bin ) {
+			return '';
+		}
+
+		if ( 16 === strlen( $bin ) && "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff" === substr( $bin, 0, 12 ) ) {
+			$v4 = inet_ntop( substr( $bin, 12, 4 ) );
+			return is_string( $v4 ) ? $v4 : '';
+		}
+
+		$text = inet_ntop( $bin );
+		return is_string( $text ) ? $text : '';
+	}
+
+	/**
+	 * @param string $ip      Canonical client IP.
+	 * @param string $network Canonical network address.
+	 * @param int    $bits    Prefix length.
+	 * @return bool
+	 */
+	private function cidr_match( $ip, $network, $bits ) {
+		$ip_bin      = inet_pton( $ip );
+		$network_bin = inet_pton( $network );
+		if ( false === $ip_bin || false === $network_bin || strlen( $ip_bin ) !== strlen( $network_bin ) ) {
+			return false;
+		}
+
+		$max = strlen( $ip_bin ) * 8;
+		if ( $bits < 0 || $bits > $max ) {
+			return false;
+		}
+
+		$bytes = (int) floor( $bits / 8 );
+		$rest  = $bits % 8;
+		if ( $bytes > 0 && substr( $ip_bin, 0, $bytes ) !== substr( $network_bin, 0, $bytes ) ) {
+			return false;
+		}
+		if ( 0 === $rest ) {
+			return true;
+		}
+
+		$mask = ( 0xFF << ( 8 - $rest ) ) & 0xFF;
+		return ( ord( $ip_bin[ $bytes ] ) & $mask ) === ( ord( $network_bin[ $bytes ] ) & $mask );
 	}
 
 	/**
