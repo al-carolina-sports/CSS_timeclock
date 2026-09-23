@@ -4,7 +4,7 @@ Tags: time clock, kiosk, pin, employee, aio time clock
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.2.2
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -24,6 +24,13 @@ This plugin does not modify aio-time-clock-lite files.
 4. Set employee PINs under Time Clock Lite → Kiosk & PINs.
 
 == Changelog ==
+
+= 1.3.0 =
+* After a PIN is accepted (including name-kiosk PIN confirm), the kiosk asks for a facility, then a location, then Clock in or Clock out. This release also includes the 1.2.2 keyboard / numpad PIN entry and the admin PIN eye.
+* Facilities: Carolina Sports and Spine, BioFunctionalMed, TrueRadiance Medispa, Other. Locations: Rocky Mount, Wilson, Raleigh. Any facility can be paired with any location. Lists are editable under Kiosk settings (one name per line) and through the `css_tc_facilities` and `css_tc_locations` filters.
+* Each punch stores `css_tc_facility` and `css_tc_location` on the shift. The facility label is also written to AIO's `department` meta so Real Time Monitoring still shows the business. The `css_tc_aio_department` filter can remap that department value.
+* The last facility and location are remembered per employee and highlighted on the next punch. They can still be changed every time, including on clock-out (that updates the open shift's pair).
+* Who's-working board shows facility and location on a second line under each working name. Open shifts are still found with the 1.2.1 PHP empty clock-out check.
 
 = 1.2.2 =
 * PIN kiosk and name-kiosk PIN confirm accept a physical keyboard or USB numpad: digit keys and numpad 0–9 append (still limited to the configured PIN length), Backspace and Delete remove the last digit, and Enter submits the same way as Continue.

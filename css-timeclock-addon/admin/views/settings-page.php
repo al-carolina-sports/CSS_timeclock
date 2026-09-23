@@ -70,7 +70,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 						<p class="description">
 							<?php echo esc_html__( 'Shortcode:', 'css-timeclock-addon' ); ?>
 							<code>[css_tc_name_kiosk]</code>
-							<?php echo esc_html__( 'Phase 1 always asks for a PIN after a name is tapped.', 'css-timeclock-addon' ); ?>
+							<?php echo esc_html__( 'After a name is tapped, the employee confirms with a PIN, then chooses a facility and location.', 'css-timeclock-addon' ); ?>
 							<?php if ( $name_page ) : ?>
 								— <a href="<?php echo esc_url( $name_page ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__( 'Open name kiosk page', 'css-timeclock-addon' ); ?></a>
 							<?php endif; ?>
@@ -116,6 +116,36 @@ if ( ! defined( 'ABSPATH' ) ) {
 					</td>
 				</tr>
 				<tr>
+					<th scope="row"><?php echo esc_html__( 'Facility and location', 'css-timeclock-addon' ); ?></th>
+					<td>
+						<label>
+							<input type="checkbox" name="place_prompt_enabled" value="1" <?php checked( ! empty( $settings['place_prompt_enabled'] ) ); ?> />
+							<?php echo esc_html__( 'Ask for a facility, then a location, after the PIN on every punch', 'css-timeclock-addon' ); ?>
+						</label>
+						<p class="description">
+							<?php echo esc_html__( 'Employees who float between businesses pick both before Clock in or Clock out. The last choice is highlighted and can be changed. Each punch saves the facility and location on the shift.', 'css-timeclock-addon' ); ?>
+						</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="css-tc-facilities"><?php echo esc_html__( 'Facilities', 'css-timeclock-addon' ); ?></label></th>
+					<td>
+						<textarea name="facilities" id="css-tc-facilities" rows="6" class="large-text code"><?php echo esc_textarea( implode( "\n", css_tc_addon()->places->stored_facilities() ) ); ?></textarea>
+						<p class="description">
+							<?php echo esc_html__( 'One facility per line. Saved on the shift as css_tc_facility and copied into AIO’s department field so Real Time Monitoring shows the business. A blank box restores the default list. The css_tc_facilities filter can still change the kiosk list.', 'css-timeclock-addon' ); ?>
+						</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="css-tc-locations"><?php echo esc_html__( 'Locations', 'css-timeclock-addon' ); ?></label></th>
+					<td>
+						<textarea name="locations" id="css-tc-locations" rows="5" class="large-text code"><?php echo esc_textarea( implode( "\n", css_tc_addon()->places->stored_locations() ) ); ?></textarea>
+						<p class="description">
+							<?php echo esc_html__( 'One location per line. Saved on the shift as css_tc_location. Any facility can be paired with any location. A blank box restores the default list. The css_tc_locations filter can still change the kiosk list.', 'css-timeclock-addon' ); ?>
+						</p>
+					</td>
+				</tr>
+				<tr>
 					<th scope="row"><label for="idle_reset_ms"><?php echo esc_html__( 'Return to idle', 'css-timeclock-addon' ); ?></label></th>
 					<td>
 						<input name="idle_reset_ms" id="idle_reset_ms" type="number" min="3000" max="30000" step="500" value="<?php echo esc_attr( (string) $settings['idle_reset_ms'] ); ?>" class="small-text" />
@@ -133,7 +163,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<div class="css-tc-help">
 			<h2><?php echo esc_html__( 'How punches reach AIO Lite', 'css-timeclock-addon' ); ?></h2>
 			<p>
-				<?php echo esc_html__( 'AIO Lite’s clock AJAX only runs for a logged-in WordPress user. This add-on does not call that AJAX and does not edit AIO files. After a valid PIN it creates or closes the same shift custom posts AIO uses (post type shift, author = employee, meta employee_clock_in_time / employee_clock_out_time). Time Clock Lite → Real Time Monitoring lists anyone whose clock-out meta is still empty.', 'css-timeclock-addon' ); ?>
+				<?php echo esc_html__( 'AIO Lite’s clock AJAX only runs for a logged-in WordPress user. This add-on does not call that AJAX and does not edit AIO files. After a valid PIN, facility, and location it creates or closes the same shift custom posts AIO uses (post type shift, author = employee, meta employee_clock_in_time / employee_clock_out_time). The facility label is also stored as department so monitoring still shows a business, plus css_tc_facility and css_tc_location. Time Clock Lite → Real Time Monitoring lists anyone whose clock-out meta is still empty.', 'css-timeclock-addon' ); ?>
 			</p>
 		</div>
 	<?php elseif ( 'pins' === $tab ) : ?>

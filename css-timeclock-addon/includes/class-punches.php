@@ -69,15 +69,63 @@ class Css_Tc_Punches {
 	}
 
 	/**
+	 * Normalize a kiosk facility/location pair.
+	 *
+	 * Null means the place prompt is off and the caller should keep the legacy
+	 * employee-department write. A WP_Error means the prompt is on and the
+	 * submitted pair is missing or not in the allowed lists.
+	 *
+	 * @param array<string,mixed> $place Raw facility and location.
+	 * @return array{facility:string,location:string}|null|WP_Error
+	 */
+	public function resolve_punch_place( $place ) {
+		$places = css_tc_addon()->places;
+		if ( ! $places->prompt_enabled() ) {
+			return null;
+		}
+
+		$facility = $places->canonical_facility( isset( $place['facility'] ) ? $place['facility'] : '' );
+		$location = $places->canonical_location( isset( $place['location'] ) ? $place['location'] : '' );
+		if ( '' === $facility || '' === $location ) {
+			return new WP_Error(
+				'css_tc_place',
+				__( 'Choose a facility and a location before clocking in or out.', 'css-timeclock-addon' )
+			);
+		}
+
+		return array(
+			'facility' => $facility,
+			'location' => $location,
+		);
+	}
+
+	/**
+	 * @param int                               $shift_id Shift post ID.
+	 * @param int                               $user_id  Employee user ID.
+	 * @param array{facility:string,location:string} $place Canonical pair.
+	 * @return void
+	 */
+	private function apply_punch_place( $shift_id, $user_id, $place ) {
+		css_tc_addon()->places->write_shift( $shift_id, $place['facility'], $place['location'] );
+		css_tc_addon()->places->remember( $user_id, $place['facility'], $place['location'] );
+	}
+
+	/**
 	 * Clock the employee in. Fails if they already have an open shift.
 	 *
-	 * @param int    $user_id Employee user ID.
-	 * @param string $source  pin_kiosk|name_kiosk.
+	 * @param int                  $user_id Employee user ID.
+	 * @param string               $source  pin_kiosk|name_kiosk.
+	 * @param array<string,mixed>  $place   Facility and location when the prompt is on.
 	 * @return array<string,mixed>|WP_Error
 	 */
-	public function clock_in( $user_id, $source = 'pin_kiosk' ) {
-		$user_id = (int) $user_id;
-		$open    = $this->open_shift_for( $user_id );
+	public function clock_in( $user_id, $source = 'pin_kiosk', $place = array() ) {
+		$user_id   = (int) $user_id;
+		$canonical = $this->resolve_punch_place( $place );
+		if ( is_wp_error( $canonical ) ) {
+			return $canonical;
+		}
+
+		$open = $this->open_shift_for( $user_id );
 
 		if ( $open['is_clocked_in'] ) {
 			return new WP_Error( 'css_tc_already_in', __( 'You are already clocked in.', 'css-timeclock-addon' ) );
@@ -104,9 +152,17 @@ class Css_Tc_Punches {
 		// string. Existing SQL NULL rows must still count as open via PHP filter.
 		update_post_meta( $shift_id, 'employee_clock_out_time', '' );
 
-		$department = css_tc_addon()->employees->department( $user_id );
-		if ( '' !== $department ) {
-			add_post_meta( $shift_id, 'department', $department, true );
+		$facility = '';
+		$location = '';
+		if ( is_array( $canonical ) ) {
+			$this->apply_punch_place( $shift_id, $user_id, $canonical );
+			$facility = $canonical['facility'];
+			$location = $canonical['location'];
+		} else {
+			$department = css_tc_addon()->employees->department( $user_id );
+			if ( '' !== $department ) {
+				add_post_meta( $shift_id, 'department', $department, true );
+			}
 		}
 
 		add_post_meta( $shift_id, 'ip_address_in', $this->client_ip(), true );
@@ -129,19 +185,27 @@ class Css_Tc_Punches {
 			'is_clocked_in' => true,
 			'clock_in_time' => $this->format_time( $now ),
 			'time_total'    => '',
+			'facility'      => $facility,
+			'location'      => $location,
 		);
 	}
 
 	/**
 	 * Clock the employee out of their open shift.
 	 *
-	 * @param int    $user_id Employee user ID.
-	 * @param string $source  pin_kiosk|name_kiosk.
+	 * @param int                 $user_id Employee user ID.
+	 * @param string              $source  pin_kiosk|name_kiosk.
+	 * @param array<string,mixed> $place   Facility and location when the prompt is on.
 	 * @return array<string,mixed>|WP_Error
 	 */
-	public function clock_out( $user_id, $source = 'pin_kiosk' ) {
-		$user_id = (int) $user_id;
-		$open    = $this->open_shift_for( $user_id );
+	public function clock_out( $user_id, $source = 'pin_kiosk', $place = array() ) {
+		$user_id   = (int) $user_id;
+		$canonical = $this->resolve_punch_place( $place );
+		if ( is_wp_error( $canonical ) ) {
+			return $canonical;
+		}
+
+		$open = $this->open_shift_for( $user_id );
 
 		if ( ! $open['is_clocked_in'] || $open['open_shift_id'] < 1 ) {
 			return new WP_Error( 'css_tc_not_in', __( 'You are not clocked in.', 'css-timeclock-addon' ) );
@@ -154,6 +218,14 @@ class Css_Tc_Punches {
 		update_post_meta( $shift_id, 'employee_clock_out_time', $now );
 		add_post_meta( $shift_id, 'ip_address_out', $this->client_ip(), true );
 		add_post_meta( $shift_id, 'css_tc_kiosk_source_out', sanitize_key( $source ), true );
+
+		$facility = '';
+		$location = '';
+		if ( is_array( $canonical ) ) {
+			$this->apply_punch_place( $shift_id, $user_id, $canonical );
+			$facility = $canonical['facility'];
+			$location = $canonical['location'];
+		}
 
 		/**
 		 * Fires after a kiosk clock-out closes an AIO-compatible shift.
@@ -173,6 +245,8 @@ class Css_Tc_Punches {
 			'clock_in_time'  => $this->format_time( (string) $clock_in ),
 			'clock_out_time' => $this->format_time( $now ),
 			'time_total'     => $this->elapsed_label( (string) $clock_in, $now ),
+			'facility'       => $facility,
+			'location'       => $location,
 		);
 	}
 
@@ -199,7 +273,7 @@ class Css_Tc_Punches {
 	 * Loads recent shift posts (no clock-out meta_query), then filters in PHP
 	 * with is_open_shift_meta() — same approach as open_shift_for() and AIO.
 	 *
-	 * @return array<int,array{clock_in_time:string}>
+	 * @return array<int,array{clock_in_time:string,facility:string,location:string}>
 	 */
 	public function open_shifts_by_author() {
 		$query = new WP_Query(
@@ -228,8 +302,11 @@ class Css_Tc_Punches {
 					continue;
 				}
 
+				$place          = css_tc_addon()->places->read_shift( (int) $post->ID );
 				$map[ $author ] = array(
 					'clock_in_time' => $this->format_board_time( (string) $clock_in ),
+					'facility'      => $place['facility'],
+					'location'      => $place['location'],
 				);
 			}
 		}
@@ -288,7 +365,13 @@ class Css_Tc_Punches {
 			);
 			if ( isset( $open[ $id ] ) ) {
 				$row['clock_in_time'] = $open[ $id ]['clock_in_time'];
-				$working[]            = $row;
+				if ( '' !== $open[ $id ]['facility'] ) {
+					$row['facility'] = $open[ $id ]['facility'];
+				}
+				if ( '' !== $open[ $id ]['location'] ) {
+					$row['location'] = $open[ $id ]['location'];
+				}
+				$working[] = $row;
 			} else {
 				$out[] = $row;
 			}
@@ -501,6 +584,8 @@ class Css_Tc_Punches {
 			'out_next_day'    => ( ! $is_open && substr( $clock_out, 0, 10 ) !== substr( $clock_in, 0, 10 ) ),
 			'time_total'      => $is_open ? '' : $this->elapsed_label( $clock_in, $clock_out ),
 			'is_open'         => $is_open,
+			'facility'        => sanitize_text_field( (string) get_post_meta( $post->ID, Css_Tc_Places::META_FACILITY, true ) ),
+			'location'        => sanitize_text_field( (string) get_post_meta( $post->ID, Css_Tc_Places::META_LOCATION, true ) ),
 		);
 	}
 

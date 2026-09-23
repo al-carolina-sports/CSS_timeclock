@@ -11,6 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once CSS_TC_ADDON_DIR . 'includes/class-employees.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-pins.php';
+require_once CSS_TC_ADDON_DIR . 'includes/class-places.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-punches.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-corrections.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-ajax.php';
@@ -40,6 +41,11 @@ class Css_Tc_Plugin {
 	public $pins;
 
 	/**
+	 * @var Css_Tc_Places
+	 */
+	public $places;
+
+	/**
 	 * @var Css_Tc_Punches
 	 */
 	public $punches;
@@ -62,6 +68,7 @@ class Css_Tc_Plugin {
 	private function __construct() {
 		$this->employees   = new Css_Tc_Employees();
 		$this->pins        = new Css_Tc_Pins();
+		$this->places      = new Css_Tc_Places();
 		$this->punches     = new Css_Tc_Punches();
 		$this->corrections = new Css_Tc_Corrections();
 
@@ -90,6 +97,9 @@ class Css_Tc_Plugin {
 			'name_kiosk_page_id'      => 0,
 			'employee_times_page_id'  => 0,
 			'times_lookback_days'     => 21,
+			'place_prompt_enabled'    => 1,
+			'facilities'              => Css_Tc_Places::default_facilities(),
+			'locations'               => Css_Tc_Places::default_locations(),
 		);
 	}
 

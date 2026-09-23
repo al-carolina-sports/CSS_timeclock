@@ -1,3 +1,7 @@
+.css-tc-admin textarea.large-text {
+	max-width: 520px;
+}
+
 .css-tc-admin .css-tc-lead {
 	max-width: 720px;
 	font-size: 14px;

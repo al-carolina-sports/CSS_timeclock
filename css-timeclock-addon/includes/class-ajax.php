@@ -92,6 +92,18 @@ class Css_Tc_Ajax {
 		css_tc_addon()->pins->record_success();
 
 		$open = css_tc_addon()->punches->open_shift_for( $user_id );
+		$last = css_tc_addon()->places->last_for( $user_id );
+		if ( $open['is_clocked_in'] && $open['open_shift_id'] > 0 ) {
+			$on_shift       = css_tc_addon()->places->read_shift( $open['open_shift_id'] );
+			$shift_facility = css_tc_addon()->places->canonical_facility( $on_shift['facility'] );
+			$shift_location = css_tc_addon()->places->canonical_location( $on_shift['location'] );
+			if ( '' !== $shift_facility ) {
+				$last['facility'] = $shift_facility;
+			}
+			if ( '' !== $shift_location ) {
+				$last['location'] = $shift_location;
+			}
+		}
 
 		wp_send_json_success(
 			array(
@@ -101,6 +113,9 @@ class Css_Tc_Ajax {
 				'is_clocked_in' => $open['is_clocked_in'],
 				'clock_in_time' => $open['clock_in_time'],
 				'next_action'   => $open['is_clocked_in'] ? 'clock_out' : 'clock_in',
+				'last_facility' => $last['facility'],
+				'last_location' => $last['location'],
+				'ask_place'     => css_tc_addon()->places->prompt_enabled(),
 			)
 		);
 	}
@@ -131,9 +146,13 @@ class Css_Tc_Ajax {
 			wp_send_json_error( array( 'message' => $limited->get_error_message() ), 429 );
 		}
 
-		$pin        = css_tc_addon()->pins->normalize( isset( $_POST['pin'] ) ? wp_unslash( $_POST['pin'] ) : '' );
-		$user_id    = isset( $_POST['user_id'] ) ? absint( $_POST['user_id'] ) : 0;
-		$clock_act  = isset( $_POST['clock_action'] ) ? sanitize_key( wp_unslash( $_POST['clock_action'] ) ) : '';
+		$pin       = css_tc_addon()->pins->normalize( isset( $_POST['pin'] ) ? wp_unslash( $_POST['pin'] ) : '' );
+		$user_id   = isset( $_POST['user_id'] ) ? absint( $_POST['user_id'] ) : 0;
+		$clock_act = isset( $_POST['clock_action'] ) ? sanitize_key( wp_unslash( $_POST['clock_action'] ) ) : '';
+		$place     = array(
+			'facility' => isset( $_POST['facility'] ) ? wp_unslash( $_POST['facility'] ) : '',
+			'location' => isset( $_POST['location'] ) ? wp_unslash( $_POST['location'] ) : '',
+		);
 
 		if ( ! in_array( $clock_act, array( 'clock_in', 'clock_out' ), true ) ) {
 			wp_send_json_error( array( 'message' => __( 'Unknown clock action.', 'css-timeclock-addon' ) ), 400 );
@@ -160,13 +179,14 @@ class Css_Tc_Ajax {
 		css_tc_addon()->pins->record_success();
 
 		if ( 'clock_in' === $clock_act ) {
-			$result = css_tc_addon()->punches->clock_in( $user_id, $source );
+			$result = css_tc_addon()->punches->clock_in( $user_id, $source, $place );
 		} else {
-			$result = css_tc_addon()->punches->clock_out( $user_id, $source );
+			$result = css_tc_addon()->punches->clock_out( $user_id, $source, $place );
 		}
 
 		if ( is_wp_error( $result ) ) {
-			wp_send_json_error( array( 'message' => $result->get_error_message() ), 409 );
+			$status = ( 'css_tc_place' === $result->get_error_code() ) ? 400 : 409;
+			wp_send_json_error( array( 'message' => $result->get_error_message() ), $status );
 		}
 
 		$result['name']  = css_tc_addon()->employees->greeting_name( $user_id );
@@ -233,6 +253,12 @@ class Css_Tc_Ajax {
 		$settings['rate_limit_window']  = min( 3600, max( 60, isset( $_POST['rate_limit_window'] ) ? absint( $_POST['rate_limit_window'] ) : 900 ) );
 		$settings['idle_reset_ms']         = min( 30000, max( 3000, isset( $_POST['idle_reset_ms'] ) ? absint( $_POST['idle_reset_ms'] ) : 8000 ) );
 		$settings['times_lookback_days']   = min( 60, max( 7, isset( $_POST['times_lookback_days'] ) ? absint( $_POST['times_lookback_days'] ) : 21 ) );
+		$settings['place_prompt_enabled'] = empty( $_POST['place_prompt_enabled'] ) ? 0 : 1;
+
+		$facilities = css_tc_addon()->places->parse_lines( isset( $_POST['facilities'] ) ? wp_unslash( $_POST['facilities'] ) : '' );
+		$locations  = css_tc_addon()->places->parse_lines( isset( $_POST['locations'] ) ? wp_unslash( $_POST['locations'] ) : '' );
+		$settings['facilities'] = ! empty( $facilities ) ? $facilities : Css_Tc_Places::default_facilities();
+		$settings['locations']  = ! empty( $locations ) ? $locations : Css_Tc_Places::default_locations();
 
 		css_tc_addon()->update_settings( $settings );
 

@@ -55,6 +55,9 @@
         rate_limit_window: form.rate_limit_window.value,
         idle_reset_ms: form.idle_reset_ms.value,
         times_lookback_days: form.times_lookback_days ? form.times_lookback_days.value : 21,
+        place_prompt_enabled: form.place_prompt_enabled && form.place_prompt_enabled.checked ? 1 : 0,
+        facilities: form.facilities ? form.facilities.value : "",
+        locations: form.locations ? form.locations.value : "",
       };
       post("css_tc_save_settings", data)
         .then(function (result) {

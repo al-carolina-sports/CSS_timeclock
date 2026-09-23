@@ -121,6 +121,16 @@
             tot.textContent = (strings.shiftTotal || "Shift time") + " " + shift.time_total;
             row.appendChild(tot);
           }
+          var placeLabel = [shift.facility, shift.location]
+            .filter(function (part) {
+              return !!part;
+            })
+            .join(" · ");
+          if (placeLabel) {
+            var place = document.createElement("span");
+            place.textContent = placeLabel;
+            row.appendChild(place);
+          }
           card.appendChild(row);
         });
       }

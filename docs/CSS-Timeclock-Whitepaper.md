@@ -1,10 +1,10 @@
 # Carolina Sports and Spine Timeclock  
 ## Technical Whitepaper for Developers
 
-**Document version:** 1.0  
-**Date:** September 19, 2026  
+**Document version:** 1.1  
+**Date:** September 23, 2026  
 **Audience:** Internal developers and technical collaborators  
-**Status:** Phase 1 live on WP Engine sandbox; Phases 2–5 planned  
+**Status:** Addon 1.3.0 adds Phase 2 facility and location on each punch. Phase 1 kiosks, the who’s-working board, and employee corrections are on the sandbox. Phases 3 and 5 are still planned.  
 
 ---
 
@@ -19,7 +19,7 @@ Carolina Sports and Spine (CSS), BioFunctional, and related practices need an em
 
 **Current production ADP timeclock** is too primitive for those needs. **Phase 1** of a custom WordPress add-on is live on the WP Engine sandbox `carolinaspodev` and has been punch-tested end-to-end.
 
-**Approach:** Keep [All in One Time Clock Lite](https://wordpress.org/plugins/aio-time-clock-lite/) (GPL, Codebangers) as the system of record for shifts and Real Time Monitoring. Ship a separate plugin, **CSS Time Clock Addon** (`css-timeclock-addon` v1.0.0), that adds shared-tablet kiosks without forking or editing AIO Lite’s files.
+**Approach:** Keep [All in One Time Clock Lite](https://wordpress.org/plugins/aio-time-clock-lite/) (GPL, Codebangers) as the system of record for shifts and Real Time Monitoring. Ship a separate plugin, **CSS Time Clock Addon** (`css-timeclock-addon` v1.3.0), that adds shared-tablet kiosks without forking or editing AIO Lite’s files.
 
 ---
 
@@ -32,7 +32,7 @@ Carolina Sports and Spine (CSS), BioFunctional, and related practices need an em
 | Hosting constraint | The business already runs WordPress sites on WP Engine; a standalone PHP/Node app is a poor operational fit. |
 | Prior tool | A classic PHP Timeclock was previously hosted on Bluehost; that stack is abandoned, has known SQLi/XSS issues, and is unsupported on WP Engine. |
 
-Practices in scope for the product vision: **Carolina Sports and Spine**, **BioFunctional**, **TrueRadianceMedispa**, plus an **Other** facility bucket; physical locations **Rocky Mount**, **Wilson**, and **Raleigh** (tied to facility in Phase 2).
+Practices in scope: **Carolina Sports and Spine**, **BioFunctionalMed**, **TrueRadiance Medispa**, plus an **Other** facility; physical locations **Rocky Mount**, **Wilson**, and **Raleigh**. Any facility can be punched at any of those locations.
 
 ---
 
@@ -41,7 +41,7 @@ Practices in scope for the product vision: **Carolina Sports and Spine**, **BioF
 ### Goals
 - Shared **PIN kiosk** and **name-list / quick-pick kiosk** (no full WordPress login per punch).
 - Live **who’s working** for supervisors (via AIO Real Time Monitoring today; dedicated boards in Phase 3).
-- Multi-facility / multi-location punches (Phase 2).
+- Multi-facility / multi-location punches (shipped in addon 1.3.0).
 - Bulletin / announcements + daily working board (Phase 3).
 - Employee self-correction of times with **supervisor approval** and audit trail (Phase 4).
 - Office **IP allowlist** so punches only succeed from clinic networks (Phase 5).
@@ -108,7 +108,8 @@ AIO Lite’s front-end AJAX is registered for logged-in users and uses `get_curr
 | `post_author` | Employee WP user ID |
 | `employee_clock_in_time` | `Y-m-d H:i:s` site timezone |
 | `employee_clock_out_time` | Empty while working; set on clock-out |
-| `department` | From AIO department taxonomy when present |
+| `department` | Facility label chosen on the punch (so AIO monitoring shows the business). Legacy employee taxonomy name only when the facility prompt is off |
+| `css_tc_facility` / `css_tc_location` | Dedicated labels for filtering. Last pair is also stored on the user |
 | `ip_address_in` / `ip_address_out` | Tablet IP |
 
 An employee is **Working** when a shift has clock-in set and clock-out empty.
@@ -228,9 +229,9 @@ Standalone PHP Timeclock beside WordPress on WP Engine is **unsupported** and sh
 | Phase | Scope | Status |
 | --- | --- | --- |
 | **1** | PIN kiosk + name-list/quick-pick; hashed PINs; AIO-compatible punches | **Done** on `carolinaspodev` |
-| **2** | Multi-facility (CSS, BioFunctional, TrueRadianceMedispa, Other) + multi-location (Rocky Mount, Wilson, Raleigh) tied to facility; punch stores pair | Planned |
+| **2** | Multi-facility (Carolina Sports and Spine, BioFunctionalMed, TrueRadiance Medispa, Other) + location (Rocky Mount, Wilson, Raleigh); punch stores both | **In addon 1.3.0** |
 | **3** | Bulletin / announcement board + daily who’s-working board (staff-facing, not full wp-admin) | Planned |
-| **4** | Employee dashboard; self-correction requests; supervisor approve/deny; audit of original vs corrected | Planned |
+| **4** | Employee dashboard; self-correction requests; supervisor approve/deny; audit of original vs corrected | **Shipped in 1.2.0** (My Time Clock + Corrections) |
 | **5** | Office IP / CIDR allowlist per location (or global); clear reject message off-network | Planned |
 
 Suggested build order after Phase 1: **2 → 5 → 3 → 4** (or 3 before 5 if boards are needed sooner). Missed-punch email alerts are a natural add-on after facilities/locations exist.
@@ -239,13 +240,16 @@ Optional commercial shortcut: AIO **Pro** (~$40/year) documents PIN/QR/locations
 
 ---
 
-## 11. Data model (Phase 2 sketch)
+## 11. Data model (Phase 2, addon 1.3.0)
 
-- **Facilities:** Carolina Sports and Spine · BioFunctional · TrueRadianceMedispa · Other  
-- **Locations:** Rocky Mount · Wilson · Raleigh  
-- **Constraint:** Only valid facility↔location pairs (configured in admin).  
-- **Punch:** Every kiosk punch stores facility + location (+ optional kiosk/device id).  
-- Tablets may be locked to a default pair so staff do not pick the wrong site.
+- **Facilities:** Carolina Sports and Spine · BioFunctionalMed · TrueRadiance Medispa · Other
+- **Locations:** Rocky Mount · Wilson · Raleigh
+- **Pairing:** Independent lists. Any facility can be used at any location. Admins edit both lists (one name per line) under Kiosk settings. `css_tc_facilities` and `css_tc_locations` can replace them in code.
+- **Kiosk order:** PIN (pad or USB keyboard) → facility → location → clock in/out. The last pair for that employee is highlighted and can be changed on every punch, including clock-out.
+- **Shift meta:** `css_tc_facility`, `css_tc_location`, and AIO `department` set to the facility label (`css_tc_aio_department` can remap that string).
+- **User meta:** `css_tc_last_facility`, `css_tc_last_location`.
+- **Board:** Who’s working shows the pair under the name. Open shifts still use the PHP empty clock-out check.
+- Tablets are not locked to a default pair in this release. IP allowlists remain Phase 5.
 
 ---
 
@@ -279,7 +283,7 @@ Optional commercial shortcut: AIO **Pro** (~$40/year) documents PIN/QR/locations
 | Theme chrome on kiosks | Default theme sidebar still visible; Phase 3+ may add a kiosk template that hides chrome. |
 | AIO upgrade compatibility | Soft dependency; re-verify shift meta after AIO updates. |
 | Promotion to live | Requires separate decision; never auto-deploy to marketing prod. |
-| Facility/location matrix | Product owner must confirm which locations apply to which facilities before Phase 2 coding freezes. |
+| Facility/location matrix | Resolved for 1.3.0: lists are independent (any facility, any location), not a per-facility matrix. |
 
 ---
 
@@ -288,6 +292,7 @@ Optional commercial shortcut: AIO **Pro** (~$40/year) documents PIN/QR/locations
 | Version | Date | Notes |
 | --- | --- | --- |
 | 1.0 | 2026-09-19 | Initial whitepaper for developer sharing; reflects Phase 1 live on carolinaspodev. |
+| 1.1 | 2026-09-23 | Phase 2 facility and location as shipped in addon 1.3.0 (independent lists, shift meta, kiosk steps). |
 
 ---
 

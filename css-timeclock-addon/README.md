@@ -20,8 +20,8 @@ This plugin does **not** fork or edit AIO Lite. It writes the same `shift` posts
 
 ## What this plugin includes
 
-1. **PIN kiosk** — `[css_tc_pin_kiosk]` — large PIN pad, then Clock in / Clock out.
-2. **Name-list kiosk** — `[css_tc_name_kiosk]` — alphabetical employees, tap a name, **confirm with PIN**, then Clock in / Clock out.
+1. **PIN kiosk** — `[css_tc_pin_kiosk]` — large PIN pad, then facility, then location, then Clock in / Clock out.
+2. **Name-list kiosk** — `[css_tc_name_kiosk]` — alphabetical employees, tap a name, **confirm with PIN**, then facility, then location, then Clock in / Clock out.
 3. **Who’s working board** — on both kiosk pages (logged-out visitors). Side panel on wide screens; stacks under the pad on tablet widths. Lists **Working now** (with clock-in time) and **Not clocked in**. Refreshes every 20 seconds and immediately after a successful punch.
 4. **My Time Clock** — `[css_tc_my_times]` — logged-in employees (AIO employee roles) see their recent punches by day and can **suggest an edit**. Suggestions stay pending until a supervisor reviews them.
 5. Admin **Kiosk & PINs** screen (under Time Clock Lite when AIO is active, otherwise Settings), including a **Corrections** queue. Approve writes the AIO-compatible shift and keeps an audit (original times, who suggested, who approved). Reject leaves punches unchanged.
@@ -29,7 +29,7 @@ This plugin does **not** fork or edit AIO Lite. It writes the same `shift` posts
 7. Failed-PIN rate limit by tablet IP.
 8. After a punch, a success message, then the kiosk returns to idle. No employee WordPress session is created.
 
-Later (not in this build): multi-facility, locations, IP allowlist, bulletin / announcements, Pro features.
+Facility and location (1.3.0) are chosen on every punch. Later: IP allowlist, bulletin / announcements, Pro features.
 
 ## How punches reach AIO Lite
 
@@ -45,7 +45,9 @@ This add-on therefore writes AIO’s data model directly (same path Real Time Mo
 | `post_author` | the employee’s WordPress user ID |
 | `employee_clock_in_time` | `Y-m-d H:i:s` in the site timezone (`wp_date`, same as AIO 2.1) |
 | `employee_clock_out_time` | empty while working; set on clock-out |
-| `department` | AIO `department` user taxonomy, when present |
+| `department` | Facility label chosen on the punch (AIO reads this meta). If the facility prompt is turned off, the employee’s AIO department taxonomy name, when present |
+| `css_tc_facility` | Facility label (`Carolina Sports and Spine`, `BioFunctionalMed`, `TrueRadiance Medispa`, `Other`, or an edited list) |
+| `css_tc_location` | Location label (`Rocky Mount`, `Wilson`, `Raleigh`, or an edited list) |
 | `ip_address_in` / `ip_address_out` | tablet IP |
 
 An employee is **Working** in AIO monitoring when a shift has a clock-in time and an empty clock-out time.
@@ -86,11 +88,26 @@ Employees without a PIN do not appear on the name-list kiosk. The PIN kiosk only
 
 1. Open the PIN or name page on a shared tablet (Safari / Chrome). Bookmark it; the tablet can stay logged out of WordPress.
 2. Enable the matching kiosk on the settings tab if a page says it is turned off.
-3. PIN kiosk: enter PIN → **Continue** → Clock in or Clock out.
-4. Name kiosk: tap a name → enter that person’s PIN → Clock in or Clock out.
-5. A USB keyboard or numeric keypad works on the PIN screen (both kiosks). Digit keys and numpad 0–9 append, Backspace or Delete removes the last digit, and Enter submits (same as **Continue**). Length still follows the configured minimum and maximum. Escape on the PIN screen clears the digits and stays on that screen (same as **Clear**). On the name kiosk, the on-screen **Cancel** button is what returns to the name list. On the Clock in / Clock out screen, Escape cancels. On the success screen (which has no Cancel button), Escape returns to the idle screen immediately. Keys are ignored while the cursor is in the name search field, while a request is in progress, while the kiosk is turned off, and off the PIN screen (Escape on the action and success screens still works). On-screen pad buttons are unchanged.
-6. The **Who’s working** board on the same page shows who is in or out. It updates after a punch without reloading the page.
-7. Wait for the success screen. The kiosk resets by itself (default 8 seconds).
+3. PIN kiosk: enter PIN → **Continue** → facility → location → Clock in or Clock out.
+4. Name kiosk: tap a name → enter that person’s PIN → facility → location → Clock in or Clock out.
+5. Facility and location use large tap targets. The employee’s last choice is highlighted; **Continue** keeps it, or tap a different one. **Back** on the location screen returns to facilities. **Cancel** (and Escape) leaves the punch and returns to idle. Escape on the PIN screen still only clears digits.
+6. A USB keyboard or numeric keypad works on the PIN screen (both kiosks). Digit keys and numpad 0–9 append, Backspace or Delete removes the last digit, and Enter submits (same as **Continue**). Length still follows the configured minimum and maximum. Escape on the PIN screen clears the digits and stays on that screen (same as **Clear**). On the name kiosk, the on-screen **Cancel** button is what returns to the name list. On the facility, location, and Clock in / Clock out screens, Escape cancels back to idle. On the location screen, the on-screen **Back** button returns to facilities (Escape does not). On the success screen (which has no Cancel button), Escape returns to the idle screen immediately. Keys are ignored while the cursor is in the name search field, while a request is in progress, while the kiosk is turned off, and off the PIN screen (Escape on the facility, location, action, and success screens still works). On-screen pad buttons are unchanged.
+7. The **Who’s working** board on the same page shows who is in or out, with facility and location under each working name. It updates after a punch without reloading the page.
+8. Wait for the success screen. The kiosk resets by itself (default 8 seconds).
+
+## Facility and location
+
+Employees float between businesses. After the PIN resolves, every punch asks:
+
+1. **Facility** — Carolina Sports and Spine, BioFunctionalMed, TrueRadiance Medispa, Other
+2. **Location** — Rocky Mount, Wilson, Raleigh
+3. **Clock in / Clock out** — the chosen pair is shown on that screen
+
+Turn the prompt off, or edit the lists, under **Time Clock Lite → Kiosk & PINs → Kiosk settings**. One name per line. A blank box restores the defaults above. `css_tc_facilities` and `css_tc_locations` can still replace the lists in code. `css_tc_aio_department` can change the string written to AIO’s `department` meta (default: the facility label).
+
+The last pair is stored on the user (`css_tc_last_facility`, `css_tc_last_location`) and pre-selected next time. Clocking out can change the pair; that updates the open shift. Shifts opened before 1.3.0 have no place until the next punch.
+
+My Time Clock shows the pair on each punch when it is present.
 
 ## Employee times and suggested edits
 
@@ -104,11 +121,13 @@ The kiosk who’s-working board still reads the same open-shift rule after an ap
 
 ## Verify against AIO monitoring
 
-1. Clock an employee **in** on a kiosk.
+1. Clock an employee **in** on a kiosk (PIN → facility → location → Clock in).
 2. In wp-admin open **Time Clock Lite → Real Time Monitoring**.
-3. That employee should appear under **Employees Currently Working** with a clock-in time.
-4. Clock the same employee **out** on the kiosk.
-5. Refresh monitoring — they should leave the working list. The closed shift remains under **Shifts** / reports.
+3. That employee should appear under **Employees Currently Working** with a clock-in time. The department column should show the facility label.
+4. Edit the newest **Shift**. Confirm `employee_clock_in_time`, empty `employee_clock_out_time`, `department` (facility label), `css_tc_facility`, and `css_tc_location`.
+5. The kiosk **Who’s working** board should list the same facility and location under that name.
+6. Clock the same employee **out** (the last facility and location are highlighted; change them if you want that shift updated).
+7. Refresh monitoring — they should leave the working list. The closed shift remains under **Shifts** / reports.
 
 If monitoring is empty after a punch, confirm AIO Lite is active and the shift post type is registered, then edit the newest **Shift** and check `employee_clock_in_time` / `employee_clock_out_time`.
 

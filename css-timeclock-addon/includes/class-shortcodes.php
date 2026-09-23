@@ -279,6 +279,9 @@ class Css_Tc_Shortcodes {
 				'idleResetMs'    => (int) $settings['idle_reset_ms'],
 				'pinEnabled'     => ! empty( $settings['pin_kiosk_enabled'] ),
 				'nameEnabled'    => ! empty( $settings['name_kiosk_enabled'] ),
+				'askPlace'       => css_tc_addon()->places->prompt_enabled(),
+				'facilities'     => css_tc_addon()->places->facilities(),
+				'locations'      => css_tc_addon()->places->locations(),
 				'boardRefreshMs' => 20000,
 				'strings'        => array(
 					'enterPin'       => __( 'Enter your PIN', 'css-timeclock-addon' ),
@@ -304,6 +307,8 @@ class Css_Tc_Shortcodes {
 					'everyoneIn'     => __( 'Everyone is clocked in.', 'css-timeclock-addon' ),
 					'updatedAt'      => __( 'Updated', 'css-timeclock-addon' ),
 					'boardError'     => __( 'Could not load who is working.', 'css-timeclock-addon' ),
+					'chooseFacility' => __( 'Choose a facility to continue.', 'css-timeclock-addon' ),
+					'chooseLocation' => __( 'Choose a location to continue.', 'css-timeclock-addon' ),
 				),
 			)
 		);

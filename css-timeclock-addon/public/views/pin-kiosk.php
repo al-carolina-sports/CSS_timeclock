@@ -54,8 +54,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 				<button type="button" class="css-tc-btn css-tc-btn--in css-tc-btn--wide" data-action="submit-pin"><?php echo esc_html__( 'Continue', 'css-timeclock-addon' ); ?></button>
 			</section>
 
+			<?php include CSS_TC_ADDON_DIR . 'public/views/place-screens.php'; ?>
+
 			<section class="css-tc-kiosk__panel" data-screen="action" hidden>
 				<p class="css-tc-kiosk__hello" data-role="hello"></p>
+				<p class="css-tc-kiosk__place" data-role="place" hidden></p>
 				<p class="css-tc-kiosk__meta" data-role="status"></p>
 				<p class="css-tc-kiosk__error" data-role="action-error" hidden></p>
 				<div class="css-tc-kiosk__actions">

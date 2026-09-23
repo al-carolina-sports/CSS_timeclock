@@ -163,10 +163,24 @@
     (people || []).forEach(function (person) {
       var li = document.createElement("li");
       li.className = "css-tc-board__person " + (inClass || "css-tc-board__person--out");
+      var identity = document.createElement("span");
+      identity.className = "css-tc-board__identity";
       var name = document.createElement("span");
       name.className = "css-tc-board__name";
       name.textContent = person.name || "";
-      li.appendChild(name);
+      identity.appendChild(name);
+      var placeLabel = [person.facility, person.location]
+        .filter(function (part) {
+          return !!part;
+        })
+        .join(" · ");
+      if (placeLabel) {
+        var place = document.createElement("span");
+        place.className = "css-tc-board__place";
+        place.textContent = placeLabel;
+        identity.appendChild(place);
+      }
+      li.appendChild(identity);
       if (person.clock_in_time) {
         var time = document.createElement("span");
         time.className = "css-tc-board__time";
@@ -267,11 +281,16 @@
     this.busy = false;
     this.resetTimer = null;
     this.selectedName = "";
+    this.employee = null;
+    this.facility = "";
+    this.location = "";
 
     this.stage = $(root, '[data-role="stage"]');
     this.screens = {
       list: $(root, '[data-screen="list"]'),
       pin: $(root, '[data-screen="pin"]'),
+      facility: $(root, '[data-screen="facility"]'),
+      location: $(root, '[data-screen="location"]'),
       action: $(root, '[data-screen="action"]'),
       success: $(root, '[data-screen="success"]'),
     };
@@ -296,6 +315,7 @@
       var digit = button.getAttribute("data-digit");
       var action = button.getAttribute("data-action");
       var employee = button.getAttribute("data-employee");
+      var choice = button.getAttribute("data-choice");
 
       if (digit) {
         self.addDigit(digit);
@@ -307,6 +327,14 @@
         self.resolvePin();
       } else if (action === "cancel") {
         self.reset();
+      } else if (action === "confirm-facility") {
+        self.confirmFacility();
+      } else if (action === "confirm-location") {
+        self.confirmLocation();
+      } else if (action === "back-facility") {
+        self.showFacility();
+      } else if (choice === "facility" || choice === "location") {
+        self.selectChoice(choice, button.getAttribute("data-value") || "");
       } else if (action === "clock_in" || action === "clock_out") {
         self.punch(action);
       } else if (employee) {
@@ -350,7 +378,7 @@
   Kiosk.prototype.activeScreen = function () {
     var found = "";
     var self = this;
-    ["list", "pin", "action", "success"].forEach(function (key) {
+    ["list", "pin", "facility", "location", "action", "success"].forEach(function (key) {
       var el = self.screens[key];
       if (el && !el.hidden) {
         found = key;
@@ -362,7 +390,9 @@
   // Escape on the PIN screen clears digits and stays on that screen (same as
   // Clear). It does not act as Cancel, including on the name kiosk, where the
   // on-screen Cancel button still returns to the name list.
-  // Escape on the Clock in / Clock out screen calls the same reset as Cancel.
+  // Escape on facility, location, Clock in / Clock out, and the success screen
+  // calls the same reset as Cancel. The location screen's Back button is what
+  // returns to the facility list; Escape does not.
   // The success screen has no Cancel button; Escape uses that same reset so
   // the kiosk returns to idle immediately instead of waiting out the timer.
   Kiosk.prototype.handleEscape = function () {
@@ -371,7 +401,7 @@
       this.clearPin();
       return true;
     }
-    if (screen === "action" || screen === "success") {
+    if (screen === "facility" || screen === "location" || screen === "action" || screen === "success") {
       this.reset();
       return true;
     }
@@ -480,7 +510,7 @@
       .then(function (data) {
         self.userId = data.user_id;
         self.busy = false;
-        self.showAction(data);
+        self.afterPin(data);
       })
       .catch(function (err) {
         self.busy = false;
@@ -491,10 +521,141 @@
       });
   };
 
+  Kiosk.prototype.wantsPlace = function () {
+    var ask = cfg.askPlace;
+    if (this.employee && typeof this.employee.ask_place !== "undefined") {
+      ask = this.employee.ask_place;
+    }
+    return !!(ask && (cfg.facilities || []).length && (cfg.locations || []).length);
+  };
+
+  Kiosk.prototype.afterPin = function (data) {
+    this.employee = data || {};
+    this.facility = "";
+    this.location = "";
+    if (this.wantsPlace()) {
+      this.showFacility();
+      return;
+    }
+    this.showAction(this.employee);
+  };
+
+  Kiosk.prototype.initialChoice = function (kind, preferred) {
+    var list = kind === "facility" ? cfg.facilities || [] : cfg.locations || [];
+    if (preferred && list.indexOf(preferred) !== -1) {
+      return preferred;
+    }
+    return "";
+  };
+
+  Kiosk.prototype.renderChoices = function (container, items, selected, kind) {
+    if (!container) {
+      return;
+    }
+    container.innerHTML = "";
+    (items || []).forEach(function (label) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "css-tc-choice" + (selected === label ? " is-selected" : "");
+      button.setAttribute("data-choice", kind);
+      button.setAttribute("data-value", label);
+      button.setAttribute("aria-pressed", selected === label ? "true" : "false");
+      button.textContent = label;
+      container.appendChild(button);
+    });
+  };
+
+  Kiosk.prototype.selectChoice = function (kind, value) {
+    if (kind === "facility") {
+      this.facility = value;
+    } else {
+      this.location = value;
+    }
+    var role = kind === "facility" ? "facilities" : "locations";
+    var box = $(this.root, '[data-role="' + role + '"]');
+    if (box) {
+      box.querySelectorAll(".css-tc-choice").forEach(function (button) {
+        var on = button.getAttribute("data-value") === value;
+        button.classList.toggle("is-selected", on);
+        button.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+    var confirmAction = kind === "facility" ? "confirm-facility" : "confirm-location";
+    var confirm = $(this.root, '[data-action="' + confirmAction + '"]');
+    if (confirm) {
+      confirm.disabled = !value;
+    }
+    var errorRole = kind === "facility" ? "facility-error" : "location-error";
+    show($(this.root, '[data-role="' + errorRole + '"]'), false);
+    var employee = this.employee || {};
+    var remembered = kind === "facility" ? employee.last_facility || "" : employee.last_location || "";
+    var hintRole = kind === "facility" ? "facility-hint" : "location-hint";
+    show($(this.root, '[data-role="' + hintRole + '"]'), !!value && value === remembered);
+  };
+
+  Kiosk.prototype.showFacility = function () {
+    var employee = this.employee || {};
+    var name = employee.name || this.selectedName;
+    this.showScreen("facility");
+    text($(this.root, '[data-role="facility-hello"]'), (strings.hello || "Hello") + ", " + name);
+    var selected = this.initialChoice("facility", this.facility || employee.last_facility || "");
+    this.facility = selected;
+    this.renderChoices($(this.root, '[data-role="facilities"]'), cfg.facilities || [], selected, "facility");
+    var confirm = $(this.root, '[data-action="confirm-facility"]');
+    if (confirm) {
+      confirm.disabled = !selected;
+    }
+    var remembered = (this.employee && this.employee.last_facility) || "";
+    show($(this.root, '[data-role="facility-hint"]'), !!selected && selected === remembered);
+    show($(this.root, '[data-role="facility-error"]'), false);
+  };
+
+  Kiosk.prototype.confirmFacility = function () {
+    if (!this.facility) {
+      show($(this.root, '[data-role="facility-error"]'), true);
+      return;
+    }
+    this.showLocation();
+  };
+
+  Kiosk.prototype.showLocation = function () {
+    var employee = this.employee || {};
+    var name = employee.name || this.selectedName;
+    this.showScreen("location");
+    text($(this.root, '[data-role="location-hello"]'), (strings.hello || "Hello") + ", " + name);
+    text($(this.root, '[data-role="location-facility"]'), this.facility || "");
+    var selected = this.initialChoice("location", this.location || employee.last_location || "");
+    this.location = selected;
+    this.renderChoices($(this.root, '[data-role="locations"]'), cfg.locations || [], selected, "location");
+    var confirm = $(this.root, '[data-action="confirm-location"]');
+    if (confirm) {
+      confirm.disabled = !selected;
+    }
+    var remembered = (this.employee && this.employee.last_location) || "";
+    show($(this.root, '[data-role="location-hint"]'), !!selected && selected === remembered);
+    show($(this.root, '[data-role="location-error"]'), false);
+  };
+
+  Kiosk.prototype.confirmLocation = function () {
+    if (!this.location) {
+      show($(this.root, '[data-role="location-error"]'), true);
+      return;
+    }
+    this.showAction(this.employee || {});
+  };
+
   Kiosk.prototype.showAction = function (data) {
     this.showScreen("action");
     var name = data.name || this.selectedName;
     text($(this.root, '[data-role="hello"]'), (strings.hello || "Hello") + ", " + name);
+    var place = [this.facility, this.location]
+      .filter(function (part) {
+        return !!part;
+      })
+      .join(" · ");
+    var placeEl = $(this.root, '[data-role="place"]');
+    text(placeEl, place);
+    show(placeEl, !!place);
     if (data.is_clocked_in && data.clock_in_time) {
       text(
         $(this.root, '[data-role="status"]'),
@@ -521,10 +682,18 @@
       return;
     }
     this.busy = true;
+    if (this.wantsPlace() && (!this.facility || !this.location)) {
+      this.busy = false;
+      text($(this.root, '[data-role="action-error"]'), strings.chooseFacility || "Choose a facility and a location.");
+      show($(this.root, '[data-role="action-error"]'), true);
+      return;
+    }
     var payload = {
       pin: this.pin,
       kiosk: this.mode,
       clock_action: clockAction,
+      facility: this.facility,
+      location: this.location,
     };
     if (this.userId) {
       payload.user_id = this.userId;
@@ -558,6 +727,14 @@
     } else if (data.clock_in_time) {
       detail += (detail ? " · " : "") + (strings.workingSince || "Clocked in since") + " " + data.clock_in_time;
     }
+    var place = [data.facility || this.facility, data.location || this.location]
+      .filter(function (part) {
+        return !!part;
+      })
+      .join(" · ");
+    if (place) {
+      detail += (detail ? " · " : "") + place;
+    }
     text($(this.root, '[data-role="success-detail"]'), detail);
     this.scheduleReset();
   };
@@ -576,6 +753,9 @@
     this.userId = 0;
     this.busy = false;
     this.selectedName = "";
+    this.employee = null;
+    this.facility = "";
+    this.location = "";
     this.updateDots();
     show($(this.root, '[data-role="error"]'), false);
     show($(this.root, '[data-role="action-error"]'), false);

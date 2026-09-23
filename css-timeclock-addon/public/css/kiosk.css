@@ -162,6 +162,57 @@
 	font-size: 18px;
 }
 
+.css-tc-kiosk__place {
+	margin: 0 0 8px;
+	font-size: 20px;
+	font-weight: 700;
+	color: var(--css-tc-accent);
+}
+
+.css-tc-kiosk__hint {
+	margin: -8px 0 16px;
+	color: var(--css-tc-accent);
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.css-tc-choices {
+	display: grid;
+	gap: 12px;
+	max-width: 520px;
+	margin: 0 auto 8px;
+}
+
+.css-tc-choice {
+	appearance: none;
+	border: 2px solid var(--css-tc-line);
+	background: #f6fafb;
+	color: var(--css-tc-ink);
+	min-height: 76px;
+	border-radius: 16px;
+	font: inherit;
+	font-size: 22px;
+	font-weight: 700;
+	padding: 14px 18px;
+	cursor: pointer;
+}
+
+.css-tc-choice:active {
+	transform: scale(0.98);
+}
+
+.css-tc-choice:focus-visible {
+	outline: 3px solid var(--css-tc-accent);
+	outline-offset: 2px;
+}
+
+.css-tc-choice.is-selected,
+.css-tc-choice[aria-pressed="true"] {
+	border-color: var(--css-tc-accent);
+	background: #e5f3f8;
+	box-shadow: inset 4px 0 0 var(--css-tc-accent);
+}
+
 .css-tc-kiosk__dots {
 	margin: 8px 0 20px;
 	min-height: 36px;
@@ -247,6 +298,10 @@
 	color: var(--css-tc-muted);
 	font-size: 18px;
 	font-weight: 600;
+}
+
+.css-tc-kiosk__panel > .css-tc-btn--text {
+	margin-top: 4px;
 }
 
 .css-tc-btn--wide {
@@ -397,7 +452,7 @@
 
 .css-tc-board__person {
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	justify-content: space-between;
 	gap: 10px;
 	margin: 0 0 6px;
@@ -405,6 +460,14 @@
 	border-radius: 12px;
 	background: #f6fafb;
 	border: 1px solid var(--css-tc-line);
+}
+
+.css-tc-board__identity {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+	flex: 1 1 auto;
 }
 
 .css-tc-board__person--in {
@@ -421,6 +484,15 @@
 	font-weight: 600;
 	font-size: 16px;
 	line-height: 1.3;
+	overflow-wrap: anywhere;
+}
+
+.css-tc-board__place {
+	color: var(--css-tc-muted);
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.3;
+	overflow-wrap: anywhere;
 }
 
 .css-tc-board__time {
@@ -478,6 +550,7 @@
 	.css-tc-pad__key,
 	.css-tc-btn,
 	.css-tc-name,
+	.css-tc-choice,
 	.css-tc-search input {
 		min-height: 64px;
 	}
