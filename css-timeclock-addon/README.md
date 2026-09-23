@@ -29,6 +29,7 @@ This plugin does **not** fork or edit AIO Lite. It writes the same `shift` posts
 7. Failed-PIN rate limit by tablet IP.
 8. Optional **office IP allowlist** (IPv4, IPv6, and CIDR) for kiosk PIN checks, punches, the name list, and the who’s-working roster. Off, or on with an empty list, allows every network. wp-admin is not restricted.
 9. After a punch, a success message, then the kiosk returns to idle. No employee WordPress session is created.
+10. On AIO Lite wp-admin screens, addon CSS hides the Get Pro tab, “Available in Pro” rows, and the Reports Advanced tab (that tab is only a Pro button). Company name, wages, the Lite time clock page, employees, monitoring, and the date-range report stay. This does not enable Pro.
 
 Later (not in this build): multi-facility, locations, bulletin / announcements, Pro features.
 
