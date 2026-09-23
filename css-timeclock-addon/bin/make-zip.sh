@@ -3,7 +3,14 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DIST="${ROOT}/dist"
+PARENT="$(cd "${ROOT}/.." && pwd)"
+# This monorepo commits the upload zip at the repository root. A standalone
+# plugin checkout (no parent archive) still writes css-timeclock-addon/dist.
+if [ -f "${PARENT}/dist/css-timeclock-addon.zip" ]; then
+  DIST="${PARENT}/dist"
+else
+  DIST="${ROOT}/dist"
+fi
 STAGE="$(mktemp -d)"
 NAME="css-timeclock-addon"
 

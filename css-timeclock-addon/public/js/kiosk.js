@@ -68,6 +68,93 @@
     el.textContent = length ? new Array(length + 1).join("•") : "○";
   }
 
+  // Input types that are not free-text. Digits must still reach the PIN pad
+  // when one of these controls (or a pad button) has focus.
+  var NON_TEXT_INPUT = {
+    button: true,
+    submit: true,
+    reset: true,
+    checkbox: true,
+    radio: true,
+    file: true,
+    hidden: true,
+    image: true,
+    range: true,
+    color: true,
+  };
+
+  function isTextEntryTarget(el) {
+    var node = el;
+    while (node && node !== document.body && node !== document.documentElement) {
+      if (node.isContentEditable) {
+        return true;
+      }
+      var tag = node.tagName ? node.tagName.toLowerCase() : "";
+      if (tag === "textarea" || tag === "select") {
+        return true;
+      }
+      if (tag === "input") {
+        var type = (node.getAttribute("type") || "text").toLowerCase();
+        return !NON_TEXT_INPUT[type];
+      }
+      node = node.parentElement;
+    }
+    return false;
+  }
+
+  // NumLock-off numpad keys report these names and must not fill the PIN.
+  var NUMPAD_NAV_KEYS = {
+    Insert: true,
+    End: true,
+    ArrowDown: true,
+    PageDown: true,
+    ArrowLeft: true,
+    Clear: true,
+    ArrowRight: true,
+    Home: true,
+    ArrowUp: true,
+    PageUp: true,
+    Delete: true,
+  };
+
+  function digitFromKeyEvent(event) {
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return "";
+    }
+    var key = event.key || "";
+    if (key.length === 1 && key >= "0" && key <= "9") {
+      return key;
+    }
+    var code = event.code || "";
+    // Shifted top-row digits (key "!" and so on) still enter that digit.
+    if (code.length === 6 && code.indexOf("Digit") === 0) {
+      var fromDigit = code.charAt(5);
+      if (fromDigit >= "0" && fromDigit <= "9") {
+        return fromDigit;
+      }
+    }
+    if (code.length === 7 && code.indexOf("Numpad") === 0 && !NUMPAD_NAV_KEYS[key]) {
+      var fromPad = code.charAt(6);
+      if (fromPad >= "0" && fromPad <= "9") {
+        return fromPad;
+      }
+    }
+    return "";
+  }
+
+  function isEnterKey(event) {
+    return event.key === "Enter" || event.code === "Enter" || event.code === "NumpadEnter";
+  }
+
+  function isEraseKey(event) {
+    return (
+      event.key === "Backspace" ||
+      event.key === "Delete" ||
+      event.code === "Backspace" ||
+      event.code === "Delete"
+    );
+  }
+
   function fillRosterList(list, people, inClass) {
     if (!list) {
       return;
@@ -213,11 +300,9 @@
       if (digit) {
         self.addDigit(digit);
       } else if (action === "clear") {
-        self.pin = "";
-        self.updateDots();
+        self.clearPin();
       } else if (action === "back") {
-        self.pin = self.pin.slice(0, -1);
-        self.updateDots();
+        self.removeLastDigit();
       } else if (action === "submit-pin") {
         self.resolvePin();
       } else if (action === "cancel") {
@@ -235,6 +320,109 @@
         self.filterNames(search.value);
       });
     }
+
+    // Capture on document so a USB keyboard or numpad works when focus is on
+    // the page body, not only after a pad button has been clicked.
+    document.addEventListener(
+      "keydown",
+      function (event) {
+        self.onKeyDown(event);
+      },
+      true
+    );
+  };
+
+  Kiosk.prototype.ownsKeyEvent = function (event) {
+    if (!this.root || this.root.getAttribute("data-enabled") !== "1") {
+      return false;
+    }
+    var target = event.target;
+    if (target && typeof target.closest === "function") {
+      var host = target.closest(".css-tc-kiosk");
+      if (host) {
+        return host === this.root;
+      }
+    }
+    var enabled = document.querySelectorAll('.css-tc-kiosk[data-enabled="1"]');
+    return enabled.length === 1 && enabled[0] === this.root;
+  };
+
+  Kiosk.prototype.activeScreen = function () {
+    var found = "";
+    var self = this;
+    ["list", "pin", "action", "success"].forEach(function (key) {
+      var el = self.screens[key];
+      if (el && !el.hidden) {
+        found = key;
+      }
+    });
+    return found;
+  };
+
+  // Escape on the PIN screen clears digits and stays on that screen (same as
+  // Clear). It does not act as Cancel, including on the name kiosk, where the
+  // on-screen Cancel button still returns to the name list.
+  // Escape on the Clock in / Clock out screen calls the same reset as Cancel.
+  // The success screen has no Cancel button; Escape uses that same reset so
+  // the kiosk returns to idle immediately instead of waiting out the timer.
+  Kiosk.prototype.handleEscape = function () {
+    var screen = this.activeScreen();
+    if (screen === "pin") {
+      this.clearPin();
+      return true;
+    }
+    if (screen === "action" || screen === "success") {
+      this.reset();
+      return true;
+    }
+    return false;
+  };
+
+  Kiosk.prototype.onKeyDown = function (event) {
+    if (!event || event.defaultPrevented || !this.ownsKeyEvent(event)) {
+      return;
+    }
+    if (isTextEntryTarget(event.target)) {
+      return;
+    }
+    if (this.busy) {
+      return;
+    }
+
+    if ((event.key || "") === "Escape") {
+      if (event.repeat) {
+        return;
+      }
+      if (this.handleEscape()) {
+        event.preventDefault();
+      }
+      return;
+    }
+
+    if (this.activeScreen() !== "pin") {
+      return;
+    }
+
+    var digit = digitFromKeyEvent(event);
+    if (digit) {
+      event.preventDefault();
+      this.addDigit(digit);
+      return;
+    }
+
+    if (isEraseKey(event)) {
+      event.preventDefault();
+      this.removeLastDigit();
+      return;
+    }
+
+    if (isEnterKey(event)) {
+      if (event.repeat) {
+        return;
+      }
+      event.preventDefault();
+      this.resolvePin();
+    }
   };
 
   Kiosk.prototype.showScreen = function (name) {
@@ -245,6 +433,16 @@
 
   Kiosk.prototype.updateDots = function () {
     renderDots($(this.root, '[data-role="pin-dots"]'), this.pin.length);
+  };
+
+  Kiosk.prototype.clearPin = function () {
+    this.pin = "";
+    this.updateDots();
+  };
+
+  Kiosk.prototype.removeLastDigit = function () {
+    this.pin = this.pin.slice(0, -1);
+    this.updateDots();
   };
 
   Kiosk.prototype.addDigit = function (digit) {
