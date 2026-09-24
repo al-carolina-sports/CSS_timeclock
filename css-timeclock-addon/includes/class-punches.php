@@ -737,12 +737,12 @@ class Css_Tc_Punches {
 	}
 
 	/**
+	 * Same address the PIN rate limit and office allowlist use, including
+	 * X-Forwarded-For on WP Engine. Stored on the shift as ip_address_in/out.
+	 *
 	 * @return string
 	 */
 	private function client_ip() {
-		if ( empty( $_SERVER['REMOTE_ADDR'] ) ) {
-			return '';
-		}
-		return sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) );
+		return css_tc_addon()->pins->client_ip();
 	}
 }

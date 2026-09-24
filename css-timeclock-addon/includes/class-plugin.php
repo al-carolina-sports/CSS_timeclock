@@ -85,6 +85,8 @@ class Css_Tc_Plugin {
 			'pin_max_length'     => 8,
 			'rate_limit_max'     => 5,
 			'rate_limit_window'  => 900,
+			'ip_allowlist_enabled' => 0,
+			'ip_allowlist'         => '',
 			'idle_reset_ms'      => 8000,
 			'pin_kiosk_page_id'       => 0,
 			'name_kiosk_page_id'      => 0,

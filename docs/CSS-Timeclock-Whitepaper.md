@@ -231,7 +231,7 @@ Standalone PHP Timeclock beside WordPress on WP Engine is **unsupported** and sh
 | **2** | Multi-facility (CSS, BioFunctional, TrueRadianceMedispa, Other) + multi-location (Rocky Mount, Wilson, Raleigh) tied to facility; punch stores pair | Planned |
 | **3** | Bulletin / announcement board + daily who’s-working board (staff-facing, not full wp-admin) | Planned |
 | **4** | Employee dashboard; self-correction requests; supervisor approve/deny; audit of original vs corrected | Planned |
-| **5** | Office IP / CIDR allowlist per location (or global); clear reject message off-network | Planned |
+| **5** | Office IP / CIDR allowlist. Global list shipped in add-on 1.2.3 (kiosk punch, PIN resolve, name list, roster). Per-location lists wait on Phase 2. | **Global list in 1.2.3** |
 
 Suggested build order after Phase 1: **2 → 5 → 3 → 4** (or 3 before 5 if boards are needed sooner). Missed-punch email alerts are a natural add-on after facilities/locations exist.
 

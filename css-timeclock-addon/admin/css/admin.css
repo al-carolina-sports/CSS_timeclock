@@ -19,6 +19,15 @@
 	border-left-color: #00a32a;
 }
 
+.css-tc-admin .css-tc-allowlist {
+	max-width: 520px;
+	font-family: Consolas, Monaco, monospace;
+}
+
+.css-tc-admin .css-tc-allowlist-warn {
+	color: #9a3412;
+}
+
 .css-tc-admin .css-tc-help {
 	max-width: 760px;
 	margin-top: 28px;

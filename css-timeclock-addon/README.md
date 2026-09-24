@@ -27,9 +27,11 @@ This plugin does **not** fork or edit AIO Lite. It writes the same `shift` posts
 5. Admin **Kiosk & PINs** screen (under Time Clock Lite when AIO is active, otherwise Settings), including a **Corrections** queue. Approve writes the AIO-compatible shift and keeps an audit (original times, who suggested, who approved). Reject leaves punches unchanged.
 6. Per-employee PINs stored with `wp_hash_password()` / checked with `wp_check_password()`. Never plaintext.
 7. Failed-PIN rate limit by tablet IP.
-8. After a punch, a success message, then the kiosk returns to idle. No employee WordPress session is created.
+8. Optional **office IP allowlist** (IPv4, IPv6, and CIDR) for kiosk PIN checks, punches, the name list, and the who’s-working roster. Off, or on with an empty list, allows every network. wp-admin is not restricted.
+9. After a punch, a success message, then the kiosk returns to idle. No employee WordPress session is created.
+10. On AIO Lite wp-admin screens, addon CSS hides the Get Pro tab, “Available in Pro” rows, and the Reports Advanced tab (that tab is only a Pro button). Company name, wages, the Lite time clock page, employees, monitoring, and the date-range report stay. This does not enable Pro.
 
-Later (not in this build): multi-facility, locations, IP allowlist, bulletin / announcements, Pro features.
+Later (not in this build): multi-facility, locations, bulletin / announcements, Pro features.
 
 ## How punches reach AIO Lite
 
@@ -102,6 +104,17 @@ Employees without a PIN do not appear on the name-list kiosk. The PIN kiosk only
 
 The kiosk who’s-working board still reads the same open-shift rule after an approved correction.
 
+## Office IP allowlist
+
+1. Open **Time Clock Lite → Kiosk & PINs** (or **Settings → Time Clock Kiosk**). The allowlist is on the Kiosk settings tab.
+2. Leave the checkbox off, or on with an empty box (comments and blank lines do not count). Kiosks keep working from every network, including the sandbox.
+3. The page shows the address this browser is seen as. That is the same value the kiosk will check. On WP Engine it comes from `X-Forwarded-For` (then `True-Client-IP`, `X-Real-IP`, then `REMOTE_ADDR`).
+4. To enforce: check **Only allow kiosk punches from these networks**, add that address or a CIDR such as `203.0.113.0/24`, one per line, and save. `#` starts a comment.
+5. From an address on the list, PIN resolve, punch, the name list, and Who’s working still work. From any other address those requests return **This kiosk only works from the office network.** The message does not include an IP.
+6. Open wp-admin from an address that is not on the list. Kiosk settings, PIN changes, and corrections still save. My Time Clock for a logged-in employee is not gated.
+
+If every tablet is refused after you turn the list on, the proxy is not forwarding the office’s public address. Compare the address shown on this settings screen (load it from the office network) with what you entered. This screen itself stays reachable either way.
+
 ## Verify against AIO monitoring
 
 1. Clock an employee **in** on a kiosk.
@@ -130,7 +143,9 @@ Do not commit real PINs. Treat them like passwords.
 
 - Public AJAX uses a nonce (`css_tc_kiosk`). The employee times page uses a logged-in nonce (`css_tc_employee`); staff can only load or suggest edits for themselves. Admin PIN and correction screens require `manage_options`, `time_clock_admin`, or `edit_posts` when AIO is present, plus an admin nonce.
 - The public roster action (`css_tc_roster`) returns display names, in/out status, and clock-in times only — no PINs, emails, user IDs, or admin data. It is rate-limited separately from the PIN lock (40 requests / minute / IP). The board is not transient-cached; a successful punch returns a fresh board payload.
-- Failed PINs are counted per client IP (transient). After the configured limit the IP is locked for the window (default 5 failures / 15 minutes).
+- Failed PINs are counted per client IP (transient). After the configured limit the IP is locked for the window (default 5 failures / 15 minutes). The same client-IP helper is used for the office allowlist.
+- Office allowlist (Kiosk & PINs): one IPv4, IPv6, or CIDR per line; `#` comments. Disabled or empty allows all, so a sandbox is not locked out. When it is enforcing, `css_tc_resolve_pin`, `css_tc_punch`, `css_tc_employees`, and `css_tc_roster` return “This kiosk only works from the office network.” with no IP in the error. Logged-in My Time Clock and every wp-admin screen stay open from any IP.
+- On WP Engine, that helper trusts the first address in `X-Forwarded-For` (then `True-Client-IP`, `X-Real-IP`, then `REMOTE_ADDR`). The platform proxy is what makes the forwarded address trustworthy. A proxy in front of WP Engine must send the real client IP or every tablet looks like the proxy and will miss the office list. The settings screen shows the address this browser is seen as, so you can copy it onto the list. Shift meta `ip_address_in` / `ip_address_out` stores that same address.
 - PIN lookup errors are generic (“That PIN was not recognized”).
 - All kiosk output is escaped; all input is sanitized. PINs are digits-only before hashing.
 - The kiosk never calls `wp_set_auth_cookie` / `wp_signon`.

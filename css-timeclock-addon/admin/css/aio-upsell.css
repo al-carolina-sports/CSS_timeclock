@@ -1,0 +1,28 @@
+/**
+ * Hide All in One Time Clock Lite Pro upsells.
+ *
+ * Matched against AIO Lite 2.1.0 markup in aio-settings.php, aio-get-pro.php,
+ * and aio-report-wizard.php. Lite settings, employees, monitoring, and the
+ * date-range report are not targeted. This does not enable Pro features.
+ */
+
+/* Get Pro tab and the Reports → Advanced tab (that tab is only a Pro button). */
+.aio_admin_wrapper a.nav-tab[href*="tab=get_pro"],
+.aio_admin_wrapper a.nav-tab[href*="tab=custom_reports"] {
+	display: none !important;
+}
+
+/* Feature grid, promo blocks, and the thickbox product pitch. */
+.aio_admin_wrapper .proDiv,
+.aio_admin_wrapper .aio-container,
+.aio_admin_wrapper .getProButton,
+#aio-modal-window-id {
+	display: none !important;
+}
+
+/* "Available in Pro" buttons, and the settings rows that exist only to show them. */
+a.aio-pro-button,
+.css-tc-hide-pro-row,
+.aio_admin_wrapper .time-clock-table tr:has(a.aio-pro-button) {
+	display: none !important;
+}

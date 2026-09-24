@@ -53,6 +53,8 @@
         pin_max_length: form.pin_max_length.value,
         rate_limit_max: form.rate_limit_max.value,
         rate_limit_window: form.rate_limit_window.value,
+        ip_allowlist_enabled: form.ip_allowlist_enabled && form.ip_allowlist_enabled.checked ? 1 : 0,
+        ip_allowlist: form.ip_allowlist ? form.ip_allowlist.value : "",
         idle_reset_ms: form.idle_reset_ms.value,
         times_lookback_days: form.times_lookback_days ? form.times_lookback_days.value : 21,
       };

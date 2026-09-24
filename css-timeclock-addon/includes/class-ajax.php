@@ -47,6 +47,7 @@ class Css_Tc_Ajax {
 	 */
 	public function resolve_pin() {
 		$this->verify_public_nonce();
+		$this->assert_office_network();
 
 		$settings = css_tc_addon()->get_settings();
 		$mode     = isset( $_POST['kiosk'] ) ? sanitize_key( wp_unslash( $_POST['kiosk'] ) ) : 'pin';
@@ -110,6 +111,7 @@ class Css_Tc_Ajax {
 	 */
 	public function punch() {
 		$this->verify_public_nonce();
+		$this->assert_office_network();
 
 		$settings = css_tc_addon()->get_settings();
 		$source   = isset( $_POST['kiosk'] ) ? sanitize_key( wp_unslash( $_POST['kiosk'] ) ) : 'pin_kiosk';
@@ -181,6 +183,7 @@ class Css_Tc_Ajax {
 	 */
 	public function employees() {
 		$this->verify_public_nonce();
+		$this->assert_office_network();
 
 		$settings = css_tc_addon()->get_settings();
 		if ( empty( $settings['name_kiosk_enabled'] ) ) {
@@ -204,6 +207,7 @@ class Css_Tc_Ajax {
 	 */
 	public function roster() {
 		$this->verify_public_nonce();
+		$this->assert_office_network();
 
 		$settings = css_tc_addon()->get_settings();
 		if ( empty( $settings['pin_kiosk_enabled'] ) && empty( $settings['name_kiosk_enabled'] ) ) {
@@ -231,6 +235,29 @@ class Css_Tc_Ajax {
 		$settings['pin_max_length']     = min( 12, max( $settings['pin_min_length'], isset( $_POST['pin_max_length'] ) ? absint( $_POST['pin_max_length'] ) : 8 ) );
 		$settings['rate_limit_max']     = min( 20, max( 3, isset( $_POST['rate_limit_max'] ) ? absint( $_POST['rate_limit_max'] ) : 5 ) );
 		$settings['rate_limit_window']  = min( 3600, max( 60, isset( $_POST['rate_limit_window'] ) ? absint( $_POST['rate_limit_window'] ) : 900 ) );
+
+		$allow_raw = isset( $_POST['ip_allowlist'] ) ? (string) wp_unslash( $_POST['ip_allowlist'] ) : '';
+		$allow_raw = str_replace( array( "\r\n", "\r" ), "\n", $allow_raw );
+		$allow_raw = sanitize_textarea_field( $allow_raw );
+		if ( strlen( $allow_raw ) > 5000 ) {
+			wp_send_json_error( array( 'message' => __( 'The office IP list is too long.', 'css-timeclock-addon' ) ), 400 );
+		}
+		$parsed = css_tc_addon()->pins->parse_allowlist( $allow_raw );
+		if ( ! empty( $parsed['invalid'] ) ) {
+			wp_send_json_error(
+				array(
+					'message' => sprintf(
+						/* translators: %s: invalid allowlist lines the admin typed */
+						__( 'These lines are not IPv4, IPv6, or CIDR ranges: %s', 'css-timeclock-addon' ),
+						implode( ', ', array_map( 'sanitize_text_field', array_slice( $parsed['invalid'], 0, 8 ) ) )
+					),
+				),
+				400
+			);
+		}
+		$settings['ip_allowlist_enabled'] = empty( $_POST['ip_allowlist_enabled'] ) ? 0 : 1;
+		$settings['ip_allowlist']         = $allow_raw;
+
 		$settings['idle_reset_ms']         = min( 30000, max( 3000, isset( $_POST['idle_reset_ms'] ) ? absint( $_POST['idle_reset_ms'] ) : 8000 ) );
 		$settings['times_lookback_days']   = min( 60, max( 7, isset( $_POST['times_lookback_days'] ) ? absint( $_POST['times_lookback_days'] ) : 21 ) );
 
@@ -386,6 +413,28 @@ class Css_Tc_Ajax {
 				'suggestion' => $result,
 				'queue'      => css_tc_addon()->corrections->admin_queue(),
 			)
+		);
+	}
+
+	/**
+	 * Refuse kiosk reads and punches from outside the office list.
+	 *
+	 * wp-admin and logged-in employee times are not checked here. The message
+	 * never includes the client address.
+	 *
+	 * @return void
+	 */
+	private function assert_office_network() {
+		if ( css_tc_addon()->pins->is_client_allowed() ) {
+			return;
+		}
+
+		wp_send_json_error(
+			array(
+				'message' => __( 'This kiosk only works from the office network.', 'css-timeclock-addon' ),
+				'code'    => 'office_only',
+			),
+			403
 		);
 	}
 

@@ -54,7 +54,11 @@ class Css_Tc_Admin {
 	 * @return void
 	 */
 	public function enqueue( $hook ) {
-		$is_ours = ( false !== strpos( $hook, 'css-tc-addon' ) );
+		if ( $this->is_aio_admin_screen( $hook ) ) {
+			$this->enqueue_aio_upsell_hide();
+		}
+
+		$is_ours = ( false !== strpos( (string) $hook, 'css-tc-addon' ) );
 		if ( ! $is_ours ) {
 			return;
 		}
@@ -95,6 +99,60 @@ class Css_Tc_Admin {
 					'pending'      => __( 'Pending review', 'css-timeclock-addon' ),
 				),
 			)
+		);
+	}
+
+	/**
+	 * AIO Lite screens, plus Kiosk & PINs in case a Pro control is rendered there.
+	 *
+	 * @param string $hook Current admin hook.
+	 * @return bool
+	 */
+	private function is_aio_admin_screen( $hook ) {
+		$hook    = (string) $hook;
+		$screens = array(
+			'aio-tc-lite',
+			'aio-monitoring-sub',
+			'aio-employees-sub',
+			'aio-department-sub',
+			'aio-shifts-sub',
+			'aio-reports-sub',
+			'css-tc-addon',
+		);
+
+		foreach ( $screens as $screen ) {
+			if ( false !== strpos( $hook, $screen ) ) {
+				return true;
+			}
+		}
+
+		if ( ! isset( $_GET['page'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			return false;
+		}
+
+		$page = sanitize_key( wp_unslash( $_GET['page'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		return in_array( $page, $screens, true );
+	}
+
+	/**
+	 * Stylesheet (and a small script) that hides Pro promos. Does not change AIO files.
+	 *
+	 * @return void
+	 */
+	private function enqueue_aio_upsell_hide() {
+		wp_enqueue_style(
+			'css-tc-aio-upsell',
+			CSS_TC_ADDON_URL . 'admin/css/aio-upsell.css',
+			array(),
+			CSS_TC_ADDON_VERSION
+		);
+
+		wp_enqueue_script(
+			'css-tc-aio-upsell',
+			CSS_TC_ADDON_URL . 'admin/js/aio-upsell.js',
+			array(),
+			CSS_TC_ADDON_VERSION,
+			true
 		);
 	}
 
