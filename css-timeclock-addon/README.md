@@ -9,7 +9,7 @@ WP Engine upload zip (plugin wrapped in a `css-timeclock-addon/` folder):
 
 Add-on for **All in One Time Clock Lite** (Codebangers, slug `aio-time-clock-lite`). It adds shared-tablet kiosks so employees can clock in and out **without a WordPress login**, plus a logged-in employee times page with supervisor-approved corrections.
 
-This plugin does **not** fork or edit AIO Lite. It writes the same `shift` posts and meta AIO already uses, so **Time Clock Lite → Real Time Monitoring** still shows who is working.
+This plugin does **not** fork or edit AIO Lite. It writes the same `shift` posts and meta AIO already uses, so **SMOTC → Real Time Monitoring** still shows who is working. In wp-admin the menu and this plugin are labeled **SMOTC**, and AIO Lite is labeled **SMOTC Core**.
 
 | Requirement | Status |
 | --- | --- |
@@ -24,7 +24,7 @@ This plugin does **not** fork or edit AIO Lite. It writes the same `shift` posts
 2. **Name-list kiosk** — `[css_tc_name_kiosk]` — alphabetical employees, tap a name, **confirm with PIN**, then Clock in / Clock out.
 3. **Who’s working board** — on both kiosk pages (logged-out visitors). Side panel on wide screens; stacks under the pad on tablet widths. Lists **Working now** (with clock-in time) and **Not clocked in**. Refreshes every 20 seconds and immediately after a successful punch.
 4. **My Time Clock** — `[css_tc_my_times]` — logged-in employees (AIO employee roles) see their recent punches by day and can **suggest an edit**. Suggestions stay pending until a supervisor reviews them.
-5. Admin **Kiosk & PINs** screen (under Time Clock Lite when AIO is active, otherwise Settings), including a **Corrections** queue. Approve writes the AIO-compatible shift and keeps an audit (original times, who suggested, who approved). Reject leaves punches unchanged.
+5. Admin **SMOTC** screen (`admin.php?page=css-tc-addon`, under the SMOTC menu when AIO is active, otherwise Settings), including a **Corrections** queue. Approve writes the AIO-compatible shift and keeps an audit (original times, who suggested, who approved). Reject leaves punches unchanged.
 6. Per-employee PINs stored with `wp_hash_password()` / checked with `wp_check_password()`. Never plaintext.
 7. Failed-PIN rate limit by tablet IP.
 8. Optional **office IP allowlist** (IPv4, IPv6, and CIDR) for kiosk PIN checks, punches, the name list, and the who’s-working roster. Off, or on with an empty list, allows every network. wp-admin is not restricted.
@@ -73,12 +73,12 @@ On activation the plugin creates pages if they do not already exist:
 - `/name-time-clock/` → `[css_tc_name_kiosk]`
 - `/my-time-clock/` → `[css_tc_my_times]`
 
-You can recreate them from **Time Clock Lite → Kiosk & PINs → Create or restore kiosk and times pages**.
+You can recreate them from **SMOTC → Create or restore kiosk and times pages**.
 
 ## Set employee PINs
 
 1. Create WordPress users with AIO roles (`employee`, `volunteer`, `manager`, `contractor`, or the `aio_tc_*` / `time_clock_admin` aliases).
-2. Open **Time Clock Lite → Kiosk & PINs → Employee PINs** (administrators can also use **Settings → Time Clock Kiosk**).
+2. Open **SMOTC → Employee PINs** (administrators can also use **Settings → SMOTC**).
 3. Enter a 4–8 digit PIN (unique per employee) and **Save PIN**. The field is masked. The eye button on the field shows the digits while you type, and click it again to hide them.
 4. The digits are hashed immediately with `wp_hash_password()`. A saved PIN can only be replaced or cleared. The eye never reads a stored PIN back.
 
@@ -99,14 +99,14 @@ Employees without a PIN do not appear on the name-list kiosk. The PIN kiosk only
 1. Employees sign in to WordPress (their existing AIO employee user) and open **My Time Clock** (`/my-time-clock/`). This is a front-end page, not wp-admin.
 2. They see recent days (default 21), each day’s punches, and **Suggest edit**.
 3. A suggestion needs a proposed clock-in and/or clock-out, a required reason, and can mark a missing punch. Status is **pending** until reviewed. Employees only see their own times.
-4. A site admin, `time_clock_admin`, or anyone who can manage the kiosk opens **Time Clock Lite → Kiosk & PINs → Corrections**.
+4. A site admin, `time_clock_admin`, or anyone who can manage the kiosk opens **SMOTC → Corrections**.
 5. **Approve** writes the corrected `employee_clock_in_time` / `employee_clock_out_time` on the AIO `shift` (or creates a shift for a missing punch). The suggestion keeps original times, the employee, the reviewer, and timestamps. **Reject** leaves punches unchanged and stores an optional note.
 
 The kiosk who’s-working board still reads the same open-shift rule after an approved correction.
 
 ## Office IP allowlist
 
-1. Open **Time Clock Lite → Kiosk & PINs** (or **Settings → Time Clock Kiosk**). The allowlist is on the Kiosk settings tab.
+1. Open **SMOTC** (or **Settings → SMOTC**). The allowlist is on the Kiosk settings tab.
 2. Leave the checkbox off, or on with an empty box (comments and blank lines do not count). Kiosks keep working from every network, including the sandbox.
 3. The page shows the address this browser is seen as. That is the same value the kiosk will check. On WP Engine it comes from `X-Forwarded-For` (then `True-Client-IP`, `X-Real-IP`, then `REMOTE_ADDR`).
 4. To enforce: check **Only allow kiosk punches from these networks**, add that address or a CIDR such as `203.0.113.0/24`, one per line, and save. `#` starts a comment.
@@ -118,7 +118,7 @@ If every tablet is refused after you turn the list on, the proxy is not forwardi
 ## Verify against AIO monitoring
 
 1. Clock an employee **in** on a kiosk.
-2. In wp-admin open **Time Clock Lite → Real Time Monitoring**.
+2. In wp-admin open **SMOTC → Real Time Monitoring**.
 3. That employee should appear under **Employees Currently Working** with a clock-in time.
 4. Clock the same employee **out** on the kiosk.
 5. Refresh monitoring — they should leave the working list. The closed shift remains under **Shifts** / reports.
@@ -144,7 +144,7 @@ Do not commit real PINs. Treat them like passwords.
 - Public AJAX uses a nonce (`css_tc_kiosk`). The employee times page uses a logged-in nonce (`css_tc_employee`); staff can only load or suggest edits for themselves. Admin PIN and correction screens require `manage_options`, `time_clock_admin`, or `edit_posts` when AIO is present, plus an admin nonce.
 - The public roster action (`css_tc_roster`) returns display names, in/out status, and clock-in times only — no PINs, emails, user IDs, or admin data. It is rate-limited separately from the PIN lock (40 requests / minute / IP). The board is not transient-cached; a successful punch returns a fresh board payload.
 - Failed PINs are counted per client IP (transient). After the configured limit the IP is locked for the window (default 5 failures / 15 minutes). The same client-IP helper is used for the office allowlist.
-- Office allowlist (Kiosk & PINs): one IPv4, IPv6, or CIDR per line; `#` comments. Disabled or empty allows all, so a sandbox is not locked out. When it is enforcing, `css_tc_resolve_pin`, `css_tc_punch`, `css_tc_employees`, and `css_tc_roster` return “This kiosk only works from the office network.” with no IP in the error. Logged-in My Time Clock and every wp-admin screen stay open from any IP.
+- Office allowlist (SMOTC screen): one IPv4, IPv6, or CIDR per line; `#` comments. Disabled or empty allows all, so a sandbox is not locked out. When it is enforcing, `css_tc_resolve_pin`, `css_tc_punch`, `css_tc_employees`, and `css_tc_roster` return “This kiosk only works from the office network.” with no IP in the error. Logged-in My Time Clock and every wp-admin screen stay open from any IP.
 - On WP Engine, that helper trusts the first address in `X-Forwarded-For` (then `True-Client-IP`, `X-Real-IP`, then `REMOTE_ADDR`). The platform proxy is what makes the forwarded address trustworthy. A proxy in front of WP Engine must send the real client IP or every tablet looks like the proxy and will miss the office list. The settings screen shows the address this browser is seen as, so you can copy it onto the list. Shift meta `ip_address_in` / `ip_address_out` stores that same address.
 - PIN lookup errors are generic (“That PIN was not recognized”).
 - All kiosk output is escaped; all input is sanitized. PINs are digits-only before hashing.

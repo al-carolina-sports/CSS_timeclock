@@ -293,7 +293,7 @@ class Css_Tc_Shortcodes {
 					'badPin'         => __( 'That PIN was not recognized.', 'css-timeclock-addon' ),
 					'network'        => __( 'Could not reach the time clock. Try again.', 'css-timeclock-addon' ),
 					'disabled'       => __( 'This kiosk is turned off.', 'css-timeclock-addon' ),
-					'noEmployees'    => __( 'No employees have a PIN yet. A supervisor can set PINs under Time Clock → Kiosk & PINs.', 'css-timeclock-addon' ),
+					'noEmployees'    => __( 'No employees have a PIN yet. A supervisor can set PINs under SMOTC.', 'css-timeclock-addon' ),
 					'search'         => __( 'Search names', 'css-timeclock-addon' ),
 					'cancel'         => __( 'Cancel', 'css-timeclock-addon' ),
 					'clear'          => __( 'Clear', 'css-timeclock-addon' ),

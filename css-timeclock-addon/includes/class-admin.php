@@ -30,8 +30,8 @@ class Css_Tc_Admin {
 		$page = 'css-tc-addon';
 
 		add_options_page(
-			__( 'Time Clock Kiosk', 'css-timeclock-addon' ),
-			__( 'Time Clock Kiosk', 'css-timeclock-addon' ),
+			Css_Tc_Branding::BRAND,
+			Css_Tc_Branding::BRAND,
 			'manage_options',
 			$page,
 			array( $this, 'render_page' )
@@ -40,8 +40,8 @@ class Css_Tc_Admin {
 		if ( Css_Tc_Plugin::aio_is_active() ) {
 			add_submenu_page(
 				'aio-tc-lite',
-				__( 'Kiosk & PINs', 'css-timeclock-addon' ),
-				__( 'Kiosk & PINs', 'css-timeclock-addon' ),
+				Css_Tc_Branding::BRAND,
+				Css_Tc_Branding::BRAND,
 				'edit_posts',
 				$page,
 				array( $this, 'render_page' )

@@ -15,6 +15,7 @@ require_once CSS_TC_ADDON_DIR . 'includes/class-punches.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-corrections.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-ajax.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-admin.php';
+require_once CSS_TC_ADDON_DIR . 'includes/class-branding.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-shortcodes.php';
 
 /**
@@ -67,6 +68,7 @@ class Css_Tc_Plugin {
 
 		add_action( 'plugins_loaded', array( $this, 'load_textdomain' ) );
 		add_action( 'init', array( $this, 'register_runtime' ) );
+		Css_Tc_Branding::register();
 		add_action( 'admin_init', array( $this, 'maybe_create_times_page' ) );
 		add_action( 'admin_notices', array( $this, 'maybe_missing_aio_notice' ) );
 		add_filter( 'plugin_action_links_' . CSS_TC_ADDON_BASENAME, array( $this, 'plugin_action_links' ) );
@@ -206,7 +208,7 @@ class Css_Tc_Plugin {
 		}
 
 		echo '<div class="notice notice-warning"><p>';
-		echo esc_html__( 'CSS Time Clock Addon is a soft add-on for All in One Time Clock Lite. Install and activate AIO Time Clock Lite so Real Time Monitoring, employee roles, and shift reports stay in sync. Kiosk punches still write AIO-compatible shift posts if Lite is missing.', 'css-timeclock-addon' );
+		echo esc_html__( 'SMOTC is a soft add-on for SMOTC Core. Install and activate SMOTC Core so Real Time Monitoring, employee roles, and shift reports stay in sync. Kiosk punches still write compatible shift posts if it is missing.', 'css-timeclock-addon' );
 		echo '</p></div>';
 	}
 

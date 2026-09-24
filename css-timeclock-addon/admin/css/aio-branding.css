@@ -1,0 +1,23 @@
+/**
+ * Hide Codebangers chrome on All in One Time Clock Lite admin screens.
+ *
+ * Matched to AIO Lite 2.1.0: the logo link in aio-settings.php,
+ * aio-monitoring.php, aio-employees.php, and aio-reports.php, plus the
+ * Help tab (aio-support-section → codebangers.com/support/ and support.jpg).
+ * Pro upsells stay on the 1.2.3 rules in aio-upsell.css. AIO 2.1.0 has no
+ * separate Codebangers footer credit on these screens.
+ */
+
+/* Logo linked to https://codebangers.com at the top of the AIO wrapper. */
+.aio_admin_wrapper > a[href="https://codebangers.com"],
+.aio_admin_wrapper > a[href="https://codebangers.com/"],
+.aio_admin_wrapper > a[href="http://codebangers.com"],
+.aio_admin_wrapper > a[href="http://codebangers.com/"] {
+	display: none !important;
+}
+
+/* Help tab is only the Codebangers support banner. */
+.aio_admin_wrapper a.nav-tab[href*="tab=help"],
+.aio_admin_wrapper .aio-support-section {
+	display: none !important;
+}
