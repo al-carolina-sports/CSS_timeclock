@@ -19,9 +19,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 ?>
 <div class="wrap css-tc-admin">
-	<h1><?php echo esc_html__( 'Time Clock Kiosk', 'css-timeclock-addon' ); ?></h1>
+	<h1><?php echo esc_html( Css_Tc_Branding::BRAND ); ?></h1>
 	<p class="css-tc-lead">
-		<?php echo esc_html__( 'Shared tablet kiosks for All in One Time Clock Lite. Employees clock in and out with a PIN — no WordPress login on the tablet.', 'css-timeclock-addon' ); ?>
+		<?php echo esc_html__( 'Shared tablet kiosks. Employees clock in and out with a PIN — no WordPress login on the tablet.', 'css-timeclock-addon' ); ?>
 	</p>
 
 	<nav class="nav-tab-wrapper">
@@ -184,7 +184,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<div class="css-tc-help">
 			<h2><?php echo esc_html__( 'How punches reach AIO Lite', 'css-timeclock-addon' ); ?></h2>
 			<p>
-				<?php echo esc_html__( 'AIO Lite’s clock AJAX only runs for a logged-in WordPress user. This add-on does not call that AJAX and does not edit AIO files. After a valid PIN it creates or closes the same shift custom posts AIO uses (post type shift, author = employee, meta employee_clock_in_time / employee_clock_out_time). Time Clock Lite → Real Time Monitoring lists anyone whose clock-out meta is still empty.', 'css-timeclock-addon' ); ?>
+				<?php echo esc_html__( 'AIO Lite’s clock AJAX only runs for a logged-in WordPress user. This add-on does not call that AJAX and does not edit AIO files. After a valid PIN it creates or closes the same shift custom posts AIO uses (post type shift, author = employee, meta employee_clock_in_time / employee_clock_out_time). SMOTC → Real Time Monitoring lists anyone whose clock-out meta is still empty.', 'css-timeclock-addon' ); ?>
 			</p>
 		</div>
 	<?php elseif ( 'pins' === $tab ) : ?>

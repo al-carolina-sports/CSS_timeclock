@@ -1,29 +1,34 @@
-=== CSS Time Clock Addon ===
+=== SMOTC ===
 Contributors: css
 Tags: time clock, kiosk, pin, employee, aio time clock
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.2.3
+Stable tag: 1.2.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-PIN pad and name-list kiosk add-on for All in One Time Clock Lite. Clock in without a WordPress login.
+PIN pad and name-list kiosk add-on for SMOTC Core (All in One Time Clock Lite). Clock in without a WordPress login.
 
 == Description ==
 
-Shared tablet kiosks for All in One Time Clock Lite. Employees enter a PIN (or pick their name, then confirm with a PIN) and clock in or out. Punches write the same shift posts AIO Real Time Monitoring already reads.
+Shared tablet kiosks for SMOTC Core. Employees enter a PIN (or pick their name, then confirm with a PIN) and clock in or out. Punches write the same shift posts Real Time Monitoring already reads.
 
-This plugin does not modify aio-time-clock-lite files.
+This plugin does not modify aio-time-clock-lite files. In wp-admin the add-on is named SMOTC and All in One Time Clock Lite is named SMOTC Core.
 
 == Installation ==
 
 1. Upload the `css-timeclock-addon` folder to `/wp-content/plugins/`.
-2. Activate the plugin.
-3. Activate All in One Time Clock Lite.
-4. Set employee PINs under Time Clock Lite → Kiosk & PINs.
+2. Activate SMOTC.
+3. Activate All in One Time Clock Lite (shown as SMOTC Core once this plugin is active).
+4. Set employee PINs under SMOTC.
 
 == Changelog ==
+
+= 1.2.4 =
+* Admin brand is SMOTC. The top-level Time Clock Lite menu is SMOTC. The kiosk screen (admin.php?page=css-tc-addon) and Settings entry use that name too. Plugin list: this plugin is SMOTC, All in One Time Clock Lite is SMOTC Core, and that row’s author and plugin links are blank.
+* Hide the Codebangers logo, header link, and Help support banner on AIO Lite admin screens without editing AIO’s files. Page headings that say All in One Time Clock Lite read SMOTC.
+* Folder, main file, text domain, options, admin page slugs, and shortcodes are unchanged.
 
 = 1.2.3 =
 * Kiosk & PINs: optional office IP allowlist. When the checkbox is off, or the list has no addresses, every network can use the kiosks (an empty list does not lock the sandbox out). Lines starting with # are comments.
