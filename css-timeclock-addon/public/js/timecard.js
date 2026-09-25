@@ -3,7 +3,7 @@
 
   document.addEventListener("change", function (event) {
     var el = event.target;
-    if (!el || !el.getAttribute || !el.getAttribute("data-css-tc-jump")) {
+    if (!el || !el.hasAttribute || !el.hasAttribute("data-css-tc-jump")) {
       return;
     }
     if (el.value) {
