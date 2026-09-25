@@ -4,7 +4,7 @@ Tags: time clock, kiosk, pin, employee, aio time clock
 Requires at least: 5.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.2.4
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -24,6 +24,16 @@ This plugin does not modify aio-time-clock-lite files. In wp-admin the add-on is
 4. Set employee PINs under SMOTC.
 
 == Changelog ==
+
+= 1.4.0 =
+* Employee timecards on My Time Clock (`/my-time-clock/`) and an admin SMOTC → Timecards screen (`admin.php?page=css-tc-timecards`) with an employee picker, previous/next arrows, and a print stylesheet.
+* Pay period dropdown: current period, previous period, and older periods. Older periods are display-only. Settings: weekly or biweekly (default biweekly) and a Monday anchor (default 2026-09-07). Weeks are Monday–Sunday.
+* Pay Period, Pay Code (Regular, filterable), and Weekly summaries, plus a Monday–Sunday day grid with each day’s total and clock-in/clock-out pairs.
+* Current-period days that need a correction (open shift, missed clock-out, clock-out without a clock-in, or a day the employee flagged) show an edit icon. The corrections page submits the whole open pay period into the existing pending queue. Approving still updates or creates AIO shifts. Pending days show a badge.
+* Server-side rejection of any correction submit or approval that would change a shift in a closed pay period.
+* Times display and parse in the site timezone (`wp_timezone()`). Stored shift meta stays `Y-m-d H:i:s` UTC instants, so switching the site from UTC to America/New_York does not move existing punches in absolute time. Calendar days use that timezone.
+* Open shifts older than a configurable maximum (default 16 hours) are missed clock-outs, not “clocked in”, on the kiosk, who’s-working board, and timecard.
+* Correction times keep seconds when the existing punch had them.
 
 = 1.2.4 =
 * Admin brand is SMOTC. The top-level Time Clock Lite menu is SMOTC. The kiosk screen (admin.php?page=css-tc-addon) and Settings entry use that name too. Plugin list: this plugin is SMOTC, All in One Time Clock Lite is SMOTC Core, and that row’s author and plugin links are blank.

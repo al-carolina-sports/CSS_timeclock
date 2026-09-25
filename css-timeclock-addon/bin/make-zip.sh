@@ -6,7 +6,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PARENT="$(cd "${ROOT}/.." && pwd)"
 # This monorepo commits the upload zip at the repository root. A standalone
 # plugin checkout (no parent archive) still writes css-timeclock-addon/dist.
-if [ -f "${PARENT}/dist/css-timeclock-addon.zip" ]; then
+# Monorepo keeps the upload zip next to docs/. A standalone plugin
+# checkout (no parent whitepaper) still writes css-timeclock-addon/dist.
+if [ -f "${PARENT}/docs/CSS-Timeclock-Whitepaper.md" ] || [ -f "${PARENT}/dist/css-timeclock-addon.zip" ]; then
   DIST="${PARENT}/dist"
 else
   DIST="${ROOT}/dist"

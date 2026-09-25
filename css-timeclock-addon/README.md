@@ -23,8 +23,8 @@ This plugin does **not** fork or edit AIO Lite. It writes the same `shift` posts
 1. **PIN kiosk** — `[css_tc_pin_kiosk]` — large PIN pad, then Clock in / Clock out.
 2. **Name-list kiosk** — `[css_tc_name_kiosk]` — alphabetical employees, tap a name, **confirm with PIN**, then Clock in / Clock out.
 3. **Who’s working board** — on both kiosk pages (logged-out visitors). Side panel on wide screens; stacks under the pad on tablet widths. Lists **Working now** (with clock-in time) and **Not clocked in**. Refreshes every 20 seconds and immediately after a successful punch.
-4. **My Time Clock** — `[css_tc_my_times]` — logged-in employees (AIO employee roles) see their recent punches by day and can **suggest an edit**. Suggestions stay pending until a supervisor reviews them.
-5. Admin **SMOTC** screen (`admin.php?page=css-tc-addon`, under the SMOTC menu when AIO is active, otherwise Settings), including a **Corrections** queue. Approve writes the AIO-compatible shift and keeps an audit (original times, who suggested, who approved). Reject leaves punches unchanged.
+4. **My Time Clock** — `[css_tc_my_times]` — logged-in employees see their own timecard for the current and previous pay periods (older periods are listed read-only). The current period can be corrected; suggestions stay pending until a supervisor reviews them.
+5. Admin **SMOTC** screen (`admin.php?page=css-tc-addon`, under the SMOTC menu when AIO is active, otherwise Settings), including pay-period settings and a **Corrections** queue. **SMOTC → Timecards** (`admin.php?page=css-tc-timecards`) shows any employee’s timecard. Approve writes the AIO-compatible shift and keeps an audit (original times, who suggested, who approved). Reject leaves punches unchanged. A correction that would change a closed pay period is rejected.
 6. Per-employee PINs stored with `wp_hash_password()` / checked with `wp_check_password()`. Never plaintext.
 7. Failed-PIN rate limit by tablet IP.
 8. Optional **office IP allowlist** (IPv4, IPv6, and CIDR) for kiosk PIN checks, punches, the name list, and the who’s-working roster. Off, or on with an empty list, allows every network. wp-admin is not restricted.
@@ -45,7 +45,7 @@ This add-on therefore writes AIO’s data model directly (same path Real Time Mo
 | `post_title` | `Employee Shift` |
 | `post_status` | `publish` |
 | `post_author` | the employee’s WordPress user ID |
-| `employee_clock_in_time` | `Y-m-d H:i:s` in the site timezone (`wp_date`, same as AIO 2.1) |
+| `employee_clock_in_time` | `Y-m-d H:i:s` UTC instant. Same digits AIO 2.1’s `wp_date()` wrote while this site’s timezone was UTC. Displays use `wp_timezone()`. |
 | `employee_clock_out_time` | empty while working; set on clock-out |
 | `department` | AIO `department` user taxonomy, when present |
 | `ip_address_in` / `ip_address_out` | tablet IP |
@@ -94,13 +94,16 @@ Employees without a PIN do not appear on the name-list kiosk. The PIN kiosk only
 6. The **Who’s working** board on the same page shows who is in or out. It updates after a punch without reloading the page.
 7. Wait for the success screen. The kiosk resets by itself (default 8 seconds).
 
-## Employee times and suggested edits
+## Employee timecards and suggested edits
 
-1. Employees sign in to WordPress (their existing AIO employee user) and open **My Time Clock** (`/my-time-clock/`). This is a front-end page, not wp-admin.
-2. They see recent days (default 21), each day’s punches, and **Suggest edit**.
-3. A suggestion needs a proposed clock-in and/or clock-out, a required reason, and can mark a missing punch. Status is **pending** until reviewed. Employees only see their own times.
-4. A site admin, `time_clock_admin`, or anyone who can manage the kiosk opens **SMOTC → Corrections**.
-5. **Approve** writes the corrected `employee_clock_in_time` / `employee_clock_out_time` on the AIO `shift` (or creates a shift for a missing punch). The suggestion keeps original times, the employee, the reviewer, and timestamps. **Reject** leaves punches unchanged and stores an optional note.
+1. Employees sign in to WordPress (their existing AIO employee user) and open **My Time Clock** (`/my-time-clock/`). This is a front-end page, not wp-admin. They only see their own shifts.
+2. The page is a timecard: pay-period dropdown (current, previous, and older periods), Print, Pay Period / Pay Code / Weekly summaries, and a Monday–Sunday calendar. Each day shows total hours and clock-in/clock-out pairs. Times are shown in the site timezone.
+3. Pay period length (weekly or biweekly, default biweekly) and the Monday anchor (default 2026-09-07) are on the SMOTC settings screen. Weeks run Monday–Sunday. Past periods are display-only.
+4. On the **current** pay period, a day with an open shift, a missed clock-out, a clock-out without a clock-in, a pending suggestion, or an employee flag shows an edit icon. **Correct this pay period** opens one form for every day in that period (change times, add a missing punch, reason required on each change).
+5. A site admin, `time_clock_admin`, or anyone who can manage the kiosk opens **SMOTC → Timecards** to view any employee, and **SMOTC → Corrections** to approve or reject.
+6. **Approve** writes the corrected `employee_clock_in_time` / `employee_clock_out_time` on the AIO `shift` (or creates a shift for a missing punch) and keeps seconds. The suggestion stores original times, the employee, the reviewer, and timestamps. **Reject** leaves punches unchanged. Submit and approve both refuse a change that would alter a shift in a closed pay period.
+
+Open shifts older than the missed-clock-out setting (default 16 hours) are not treated as currently clocked in on the kiosk or who’s-working board.
 
 The kiosk who’s-working board still reads the same open-shift rule after an approved correction.
 
@@ -154,7 +157,7 @@ Do not commit real PINs. Treat them like passwords.
 
 ```
 css-timeclock-addon.php    Plugin bootstrap
-includes/                  Employees, PINs, punches, corrections, AJAX, admin, shortcodes
+includes/                  Employees, PINs, punches, pay periods, timecards, corrections, AJAX, admin, shortcodes
 admin/                     Settings UI
 public/                    Kiosk markup, CSS, JS
 uninstall.php              Removes settings, hashed PINs, and correction posts (AIO shifts stay)

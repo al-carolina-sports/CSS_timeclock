@@ -36,3 +36,15 @@ foreach ( $user_ids as $user_id ) {
 	delete_user_meta( (int) $user_id, 'css_tc_pin_hash' );
 	delete_user_meta( (int) $user_id, 'css_tc_pin_set_at' );
 }
+
+$flagged_users = get_users(
+	array(
+		'meta_key'     => 'css_tc_flagged_dates',
+		'meta_compare' => 'EXISTS',
+		'fields'       => 'ID',
+		'number'       => 5000,
+	)
+);
+foreach ( $flagged_users as $user_id ) {
+	delete_user_meta( (int) $user_id, 'css_tc_flagged_dates' );
+}

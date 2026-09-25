@@ -156,14 +156,38 @@ if ( ! defined( 'ABSPATH' ) ) {
 								— <a href="<?php echo esc_url( $times_page ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html__( 'Open employee times page', 'css-timeclock-addon' ); ?></a>
 							<?php endif; ?>
 						</p>
-						<p class="description"><?php echo esc_html__( 'Logged-in employees can view their own punches and suggest edits. Supervisors approve them on the Corrections tab.', 'css-timeclock-addon' ); ?></p>
+						<p class="description"><?php echo esc_html__( 'Logged-in employees see their own timecard here. Supervisors open SMOTC → Timecards for any employee. Corrections for the current pay period are approved on the Corrections tab. Past pay periods are display-only.', 'css-timeclock-addon' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="pay_period_length"><?php echo esc_html__( 'Pay period', 'css-timeclock-addon' ); ?></label></th>
+					<td>
+						<select name="pay_period_length" id="pay_period_length">
+							<option value="weekly" <?php selected( isset( $settings['pay_period_length'] ) ? $settings['pay_period_length'] : 'biweekly', 'weekly' ); ?>><?php echo esc_html__( 'Weekly', 'css-timeclock-addon' ); ?></option>
+							<option value="biweekly" <?php selected( isset( $settings['pay_period_length'] ) ? $settings['pay_period_length'] : 'biweekly', 'biweekly' ); ?>><?php echo esc_html__( 'Biweekly', 'css-timeclock-addon' ); ?></option>
+						</select>
+						<p class="description"><?php echo esc_html__( 'Weeks run Monday through Sunday. Biweekly is two of those weeks. The current period is the only one employees can correct.', 'css-timeclock-addon' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="pay_period_anchor"><?php echo esc_html__( 'Pay period anchor', 'css-timeclock-addon' ); ?></label></th>
+					<td>
+						<input name="pay_period_anchor" id="pay_period_anchor" type="date" value="<?php echo esc_attr( isset( $settings['pay_period_anchor'] ) ? (string) $settings['pay_period_anchor'] : '2026-09-07' ); ?>" />
+						<p class="description"><?php echo esc_html__( 'A Monday that starts a pay period. Default is Monday 2026-09-07. Periods before and after this date are counted from it.', 'css-timeclock-addon' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="missed_clock_out_hours"><?php echo esc_html__( 'Missed clock-out', 'css-timeclock-addon' ); ?></label></th>
+					<td>
+						<input name="missed_clock_out_hours" id="missed_clock_out_hours" type="number" min="1" max="36" value="<?php echo esc_attr( (string) ( isset( $settings['missed_clock_out_hours'] ) ? $settings['missed_clock_out_hours'] : 16 ) ); ?>" class="small-text" />
+						<?php echo esc_html__( 'hours. An open shift older than this is not “clocked in” on the kiosk or who’s-working board. The timecard flags it for correction.', 'css-timeclock-addon' ); ?>
 					</td>
 				</tr>
 				<tr>
 					<th scope="row"><label for="times_lookback_days"><?php echo esc_html__( 'Times lookback', 'css-timeclock-addon' ); ?></label></th>
 					<td>
 						<input name="times_lookback_days" id="times_lookback_days" type="number" min="7" max="60" value="<?php echo esc_attr( (string) ( isset( $settings['times_lookback_days'] ) ? $settings['times_lookback_days'] : 21 ) ); ?>" class="small-text" />
-						<?php echo esc_html__( 'days of punches employees can see and suggest edits for.', 'css-timeclock-addon' ); ?>
+						<?php echo esc_html__( 'days kept on the older day-by-day list. Timecards follow the pay period instead.', 'css-timeclock-addon' ); ?>
 					</td>
 				</tr>
 				<tr>
@@ -267,7 +291,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 		</table>
 	<?php else : ?>
 		<p>
-			<?php echo esc_html__( 'Employees suggest clock-in or clock-out corrections from My Time Clock. Approving writes the AIO-compatible shift and keeps the original times plus who suggested and who approved.', 'css-timeclock-addon' ); ?>
+			<?php echo esc_html__( 'Employees suggest clock-in or clock-out corrections for the current pay period from My Time Clock. Approving writes the AIO-compatible shift and keeps the original times plus who suggested and who approved. A suggestion that would change a closed pay period is rejected.', 'css-timeclock-addon' ); ?>
 		</p>
 
 		<h2><?php echo esc_html__( 'Pending', 'css-timeclock-addon' ); ?></h2>

@@ -57,6 +57,9 @@
         ip_allowlist: form.ip_allowlist ? form.ip_allowlist.value : "",
         idle_reset_ms: form.idle_reset_ms.value,
         times_lookback_days: form.times_lookback_days ? form.times_lookback_days.value : 21,
+        pay_period_length: form.pay_period_length ? form.pay_period_length.value : "biweekly",
+        pay_period_anchor: form.pay_period_anchor ? form.pay_period_anchor.value : "2026-09-07",
+        missed_clock_out_hours: form.missed_clock_out_hours ? form.missed_clock_out_hours.value : 16,
       };
       post("css_tc_save_settings", data)
         .then(function (result) {

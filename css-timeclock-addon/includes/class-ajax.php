@@ -40,6 +40,9 @@ class Css_Tc_Ajax {
 
 		add_action( 'wp_ajax_css_tc_my_times', array( $self, 'my_times' ) );
 		add_action( 'wp_ajax_css_tc_suggest_edit', array( $self, 'suggest_edit' ) );
+
+		add_action( 'admin_post_css_tc_submit_period', array( $self, 'submit_period' ) );
+		add_action( 'admin_post_css_tc_flag_day', array( $self, 'flag_day' ) );
 	}
 
 	/**
@@ -261,6 +264,21 @@ class Css_Tc_Ajax {
 		$settings['idle_reset_ms']         = min( 30000, max( 3000, isset( $_POST['idle_reset_ms'] ) ? absint( $_POST['idle_reset_ms'] ) : 8000 ) );
 		$settings['times_lookback_days']   = min( 60, max( 7, isset( $_POST['times_lookback_days'] ) ? absint( $_POST['times_lookback_days'] ) : 21 ) );
 
+		$length = isset( $_POST['pay_period_length'] ) ? sanitize_key( wp_unslash( $_POST['pay_period_length'] ) ) : 'biweekly';
+		$settings['pay_period_length'] = ( 'weekly' === $length ) ? 'weekly' : 'biweekly';
+
+		$anchor = isset( $_POST['pay_period_anchor'] ) ? sanitize_text_field( wp_unslash( $_POST['pay_period_anchor'] ) ) : Css_Tc_Pay_Periods::DEFAULT_ANCHOR;
+		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $anchor ) || ! css_tc_addon()->pay_periods->is_monday( $anchor ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'The pay period anchor must be a Monday, written as YYYY-MM-DD.', 'css-timeclock-addon' ),
+				),
+				400
+			);
+		}
+		$settings['pay_period_anchor'] = $anchor;
+		$settings['missed_clock_out_hours'] = min( 36, max( 1, isset( $_POST['missed_clock_out_hours'] ) ? absint( $_POST['missed_clock_out_hours'] ) : 16 ) );
+
 		css_tc_addon()->update_settings( $settings );
 
 		wp_send_json_success(
@@ -378,6 +396,72 @@ class Css_Tc_Ajax {
 				'dashboard'  => css_tc_addon()->corrections->dashboard_for_user( $user_id ),
 			)
 		);
+	}
+
+	/**
+	 * Logged-in employee: submit edits for every changed day in the open pay period.
+	 *
+	 * @return void
+	 */
+	public function submit_period() {
+		$user_id = get_current_user_id();
+		if ( $user_id < 1 || ! css_tc_addon()->employees->can_view_own_times( $user_id ) ) {
+			wp_die( esc_html__( 'You do not have permission to suggest corrections.', 'css-timeclock-addon' ) );
+		}
+		check_admin_referer( Css_Tc_Corrections::EMPLOYEE_NONCE );
+
+		$raw   = isset( $_POST['lines'] ) ? wp_unslash( $_POST['lines'] ) : array();
+		$lines = array();
+		if ( is_array( $raw ) ) {
+			foreach ( $raw as $line ) {
+				if ( ! is_array( $line ) ) {
+					continue;
+				}
+				$lines[] = array(
+					'work_date'     => isset( $line['work_date'] ) ? $line['work_date'] : '',
+					'shift_id'      => isset( $line['shift_id'] ) ? $line['shift_id'] : 0,
+					'correction_id' => isset( $line['correction_id'] ) ? $line['correction_id'] : 0,
+					'proposed_in'   => isset( $line['proposed_in'] ) ? $line['proposed_in'] : '',
+					'proposed_out'  => isset( $line['proposed_out'] ) ? $line['proposed_out'] : '',
+					'out_next_day'  => ! empty( $line['out_next_day'] ),
+					'missing_punch' => ! empty( $line['missing_punch'] ),
+					'reason'        => isset( $line['reason'] ) ? $line['reason'] : '',
+				);
+			}
+		}
+
+		$result = css_tc_addon()->corrections->submit_period( $user_id, $lines );
+		if ( is_wp_error( $result ) ) {
+			set_transient( 'css_tc_period_error_' . $user_id, $result->get_error_message(), 2 * MINUTE_IN_SECONDS );
+			wp_safe_redirect( Css_Tc_Shortcodes::correct_url() );
+			exit;
+		}
+
+		wp_safe_redirect( add_query_arg( 'css_tc_notice', 'sent', Css_Tc_Shortcodes::times_url() ) );
+		exit;
+	}
+
+	/**
+	 * Logged-in employee: flag a day in the current pay period.
+	 *
+	 * @return void
+	 */
+	public function flag_day() {
+		$user_id = get_current_user_id();
+		if ( $user_id < 1 || ! css_tc_addon()->employees->can_view_own_times( $user_id ) ) {
+			wp_die( esc_html__( 'You do not have permission to flag a day.', 'css-timeclock-addon' ) );
+		}
+		check_admin_referer( Css_Tc_Corrections::EMPLOYEE_NONCE );
+
+		$date   = isset( $_POST['work_date'] ) ? sanitize_text_field( wp_unslash( $_POST['work_date'] ) ) : '';
+		$on     = ! empty( $_POST['flag'] );
+		$result = css_tc_addon()->timecard->set_flag( $user_id, $date, $on );
+		$url    = Css_Tc_Shortcodes::times_url();
+		if ( is_wp_error( $result ) ) {
+			set_transient( 'css_tc_period_error_' . $user_id, $result->get_error_message(), 2 * MINUTE_IN_SECONDS );
+		}
+		wp_safe_redirect( $url );
+		exit;
 	}
 
 	/**

@@ -55,12 +55,19 @@ class Css_Tc_Punches {
 		foreach ( $query->posts as $post ) {
 			$clock_in  = get_post_meta( $post->ID, 'employee_clock_in_time', true );
 			$clock_out = get_post_meta( $post->ID, 'employee_clock_out_time', true );
-			if ( $this->is_open_shift_meta( $clock_in, $clock_out ) ) {
-				$result['open_shift_id'] = (int) $post->ID;
-				$result['is_clocked_in'] = true;
-				$result['clock_in_time'] = $this->format_time( (string) $clock_in );
-				break;
+			if ( ! $this->is_open_shift_meta( $clock_in, $clock_out ) ) {
+				continue;
 			}
+			// An open shift older than the configured maximum is a missed
+			// clock-out, not a current clock-in. Leave the row open so a
+			// correction can close it.
+			if ( $this->is_stale_open_shift( $clock_in ) ) {
+				continue;
+			}
+			$result['open_shift_id'] = (int) $post->ID;
+			$result['is_clocked_in'] = true;
+			$result['clock_in_time'] = $this->format_time( (string) $clock_in );
+			break;
 		}
 
 		wp_reset_postdata();
@@ -194,6 +201,25 @@ class Css_Tc_Punches {
 	}
 
 	/**
+	 * Hours after which an open shift is a missed clock-out, not "working now".
+	 *
+	 * @return int
+	 */
+	public function missed_clock_out_hours() {
+		$settings = css_tc_addon()->get_settings();
+		$hours    = isset( $settings['missed_clock_out_hours'] ) ? (int) $settings['missed_clock_out_hours'] : 16;
+		return min( 36, max( 1, $hours ) );
+	}
+
+	/**
+	 * @param mixed $clock_in Stored clock-in.
+	 * @return bool
+	 */
+	public function is_stale_open_shift( $clock_in ) {
+		return css_tc_addon()->time->is_stale_open( (string) $clock_in, $this->missed_clock_out_hours() );
+	}
+
+	/**
 	 * Open shifts keyed by employee user ID (AIO: clock-in set, clock-out empty).
 	 *
 	 * Loads recent shift posts (no clock-out meta_query), then filters in PHP
@@ -225,6 +251,9 @@ class Css_Tc_Punches {
 				$clock_in  = get_post_meta( $post->ID, 'employee_clock_in_time', true );
 				$clock_out = get_post_meta( $post->ID, 'employee_clock_out_time', true );
 				if ( ! $this->is_open_shift_meta( $clock_in, $clock_out ) ) {
+					continue;
+				}
+				if ( $this->is_stale_open_shift( $clock_in ) ) {
 					continue;
 				}
 
@@ -328,22 +357,18 @@ class Css_Tc_Punches {
 	 * @return string
 	 */
 	public function format_board_time( $mysql_datetime ) {
-		$ts = strtotime( $mysql_datetime );
-		if ( ! $ts ) {
-			return $mysql_datetime;
+		$time = css_tc_addon()->time;
+		$day  = $time->site_date_of( $mysql_datetime );
+		if ( '' === $day ) {
+			return (string) $mysql_datetime;
 		}
 
 		$time_format = get_option( 'time_format', 'g:i a' );
 		$date_format = get_option( 'date_format', 'Y-m-d' );
-		if ( function_exists( 'wp_date' ) ) {
-			$same_day = ( wp_date( 'Y-m-d', $ts ) === wp_date( 'Y-m-d' ) );
-			$format   = $same_day ? $time_format : ( $date_format . ' ' . $time_format );
-			return wp_date( $format, $ts );
-		}
-
-		$same_day = ( date_i18n( 'Y-m-d', $ts ) === date_i18n( 'Y-m-d' ) );
-		$format   = $same_day ? $time_format : ( $date_format . ' ' . $time_format );
-		return date_i18n( $format, $ts );
+		$same_day    = ( $day === $time->site_today() );
+		$format      = $same_day ? $time_format : ( $date_format . ' ' . $time_format );
+		$label       = $time->format_site( $mysql_datetime, $format );
+		return '' !== $label ? $label : (string) $mysql_datetime;
 	}
 
 	/**
@@ -358,15 +383,15 @@ class Css_Tc_Punches {
 	}
 
 	/**
-	 * WordPress-timezone now, same format AIO Lite 2.1 uses (wp_date Y-m-d H:i:s).
+	 * Current instant as UTC Y-m-d H:i:s.
+	 *
+	 * Same digits as AIO Lite 2.1's wp_date() storage while the site timezone
+	 * is UTC. See Css_Tc_Time for why this stays UTC after a timezone change.
 	 *
 	 * @return string
 	 */
 	public function current_mysql_time() {
-		if ( function_exists( 'wp_date' ) ) {
-			return wp_date( 'Y-m-d H:i:s' );
-		}
-		return current_time( 'mysql' );
+		return css_tc_addon()->time->now_stored();
 	}
 
 	/**
@@ -374,16 +399,9 @@ class Css_Tc_Punches {
 	 * @return string
 	 */
 	public function format_time( $mysql_datetime ) {
-		$ts = strtotime( $mysql_datetime );
-		if ( ! $ts ) {
-			return $mysql_datetime;
-		}
-
 		$format = get_option( 'date_format', 'Y-m-d' ) . ' ' . get_option( 'time_format', 'g:i a' );
-		if ( function_exists( 'wp_date' ) ) {
-			return wp_date( $format, $ts );
-		}
-		return date_i18n( $format, $ts );
+		$label  = css_tc_addon()->time->format_site( $mysql_datetime, $format );
+		return '' !== $label ? $label : (string) $mysql_datetime;
 	}
 
 	/**
@@ -408,7 +426,9 @@ class Css_Tc_Punches {
 		}
 
 		foreach ( $shifts as $shift ) {
-			$date = substr( (string) $shift['clock_in_raw'], 0, 10 );
+			$date = ! empty( $shift['work_date'] )
+				? (string) $shift['work_date']
+				: css_tc_addon()->time->site_date_of( (string) $shift['clock_in_raw'] );
 			if ( ! isset( $by_date[ $date ] ) ) {
 				continue;
 			}
@@ -439,6 +459,7 @@ class Css_Tc_Punches {
 	public function shifts_since( $user_id, $start_date ) {
 		$user_id    = (int) $user_id;
 		$start_date = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $start_date ) ? $start_date : $this->site_date();
+		$query_from = css_tc_addon()->time->shift_date( $start_date, -2 );
 
 		$query = new WP_Query(
 			array(
@@ -452,7 +473,7 @@ class Css_Tc_Punches {
 				'meta_query'     => array(
 					array(
 						'key'     => 'employee_clock_in_time',
-						'value'   => $start_date . ' 00:00:00',
+						'value'   => $query_from . ' 00:00:00',
 						'compare' => '>=',
 					),
 				),
@@ -485,22 +506,41 @@ class Css_Tc_Punches {
 
 		$clock_in  = (string) get_post_meta( $post->ID, 'employee_clock_in_time', true );
 		$clock_out = (string) get_post_meta( $post->ID, 'employee_clock_out_time', true );
-		if ( '' === $clock_in ) {
+		$time      = css_tc_addon()->time;
+		$has_in    = ( null !== $time->parse_stored( $clock_in ) );
+		$has_out   = ( null !== $time->parse_stored( $clock_out ) );
+
+		if ( ! $has_in && ! $has_out ) {
 			return null;
 		}
 
-		$is_open = ( '' === $clock_out );
+		$is_open       = $has_in && ! $has_out;
+		$is_missing_in = ( ! $has_in && $has_out );
+		$is_stale      = $is_open && $this->is_stale_open_shift( $clock_in );
+		$in_day        = $has_in ? $time->site_date_of( $clock_in ) : '';
+		$out_day       = $has_out ? $time->site_date_of( $clock_out ) : '';
+		$work_date     = '' !== $in_day ? $in_day : $out_day;
+		$seconds       = ( $has_in && $has_out ) ? $time->elapsed_seconds( $clock_in, $clock_out ) : -1;
+
 		return array(
 			'id'              => (int) $post->ID,
-			'clock_in_raw'    => $clock_in,
-			'clock_out_raw'   => $is_open ? '' : $clock_out,
-			'clock_in'        => $this->format_time( $clock_in ),
-			'clock_out'       => $is_open ? '' : $this->format_time( $clock_out ),
-			'clock_in_hm'     => $this->format_hour_minute( $clock_in ),
-			'clock_out_hm'    => $is_open ? '' : $this->format_hour_minute( $clock_out ),
-			'out_next_day'    => ( ! $is_open && substr( $clock_out, 0, 10 ) !== substr( $clock_in, 0, 10 ) ),
-			'time_total'      => $is_open ? '' : $this->elapsed_label( $clock_in, $clock_out ),
+			'clock_in_raw'    => $has_in ? $clock_in : '',
+			'clock_out_raw'   => $has_out ? $clock_out : '',
+			'clock_in'        => $has_in ? $this->format_time( $clock_in ) : '',
+			'clock_out'       => $has_out ? $this->format_time( $clock_out ) : '',
+			'clock_in_hm'     => $has_in ? $time->site_hm( $clock_in ) : '',
+			'clock_out_hm'    => $has_out ? $time->site_hm( $clock_out ) : '',
+			'clock_in_hms'    => $has_in ? $time->site_hms( $clock_in ) : '',
+			'clock_out_hms'   => $has_out ? $time->site_hms( $clock_out ) : '',
+			'clock_in_clock'  => $has_in ? $time->format_clock( $clock_in ) : '',
+			'clock_out_clock' => $has_out ? $time->format_clock( $clock_out ) : '',
+			'work_date'       => $work_date,
+			'out_next_day'    => ( $has_in && $has_out && $out_day !== $in_day ),
+			'time_total'      => $seconds >= 0 ? $time->format_duration( $seconds ) : '',
+			'seconds'         => $seconds >= 0 ? $seconds : 0,
 			'is_open'         => $is_open,
+			'is_stale_open'   => $is_stale,
+			'is_missing_in'   => $is_missing_in,
 		);
 	}
 
@@ -622,24 +662,14 @@ class Css_Tc_Punches {
 	 * @return string
 	 */
 	public function format_hour_minute( $mysql_datetime ) {
-		$ts = strtotime( $mysql_datetime );
-		if ( ! $ts ) {
-			return '';
-		}
-		if ( function_exists( 'wp_date' ) ) {
-			return wp_date( 'H:i', $ts );
-		}
-		return date_i18n( 'H:i', $ts );
+		return css_tc_addon()->time->site_hm( $mysql_datetime );
 	}
 
 	/**
 	 * @return string
 	 */
 	public function site_date() {
-		if ( function_exists( 'wp_date' ) ) {
-			return wp_date( 'Y-m-d' );
-		}
-		return date_i18n( 'Y-m-d' );
+		return css_tc_addon()->time->site_today();
 	}
 
 	/**
@@ -648,15 +678,7 @@ class Css_Tc_Punches {
 	 * @return string
 	 */
 	public function shift_date( $date, $offset_days ) {
-		$ts = strtotime( $date . ' 12:00:00' );
-		if ( ! $ts ) {
-			$ts = time();
-		}
-		$ts += ( (int) $offset_days ) * DAY_IN_SECONDS;
-		if ( function_exists( 'wp_date' ) ) {
-			return wp_date( 'Y-m-d', $ts );
-		}
-		return date_i18n( 'Y-m-d', $ts );
+		return css_tc_addon()->time->shift_date( $date, $offset_days );
 	}
 
 	/**
@@ -664,12 +686,7 @@ class Css_Tc_Punches {
 	 * @return string
 	 */
 	public function format_day_label( $date ) {
-		$ts = strtotime( $date . ' 12:00:00' );
-		$format = get_option( 'date_format', 'Y-m-d' );
-		if ( function_exists( 'wp_date' ) ) {
-			return wp_date( $format, $ts );
-		}
-		return date_i18n( $format, $ts );
+		return css_tc_addon()->time->format_day_label( $date );
 	}
 
 	/**
@@ -677,30 +694,23 @@ class Css_Tc_Punches {
 	 * @return string
 	 */
 	public function format_weekday( $date ) {
-		$ts = strtotime( $date . ' 12:00:00' );
-		if ( function_exists( 'wp_date' ) ) {
-			return wp_date( 'l', $ts );
-		}
-		return date_i18n( 'l', $ts );
+		return css_tc_addon()->time->format_weekday( $date );
 	}
 
 	/**
-	 * Combine a work date + HH:MM into AIO's site-timezone mysql datetime.
+	 * Combine a site-local work date and time into the UTC storage string.
 	 *
-	 * @param string $date     Y-m-d.
-	 * @param string $hm       H:i.
-	 * @param bool   $next_day Whether the time is the following calendar day.
+	 * Seconds are kept when the input includes them, or when they were omitted
+	 * but match the hour and minute of $original_stored.
+	 *
+	 * @param string $date            Y-m-d in the site timezone.
+	 * @param string $hm              H:i or H:i:s.
+	 * @param bool   $next_day        Whether the time is the following calendar day.
+	 * @param string $original_stored Existing stored instant, used to preserve seconds.
 	 * @return string
 	 */
-	public function combine_day_time( $date, $hm, $next_day = false ) {
-		$hm = $this->normalize_hour_minute( $hm );
-		if ( '' === $hm || ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) ) {
-			return '';
-		}
-		if ( $next_day ) {
-			$date = $this->shift_date( $date, 1 );
-		}
-		return $date . ' ' . $hm . ':00';
+	public function combine_day_time( $date, $hm, $next_day = false, $original_stored = '' ) {
+		return css_tc_addon()->time->combine_day_time( $date, $hm, $next_day, $original_stored );
 	}
 
 	/**
@@ -708,15 +718,7 @@ class Css_Tc_Punches {
 	 * @return string
 	 */
 	public function normalize_hour_minute( $hm ) {
-		$hm = trim( (string) $hm );
-		if ( preg_match( '/^(\d{1,2}):(\d{2})$/', $hm, $m ) ) {
-			$hour = (int) $m[1];
-			$min  = (int) $m[2];
-			if ( $hour >= 0 && $hour <= 23 && $min >= 0 && $min <= 59 ) {
-				return sprintf( '%02d:%02d', $hour, $min );
-			}
-		}
-		return '';
+		return css_tc_addon()->time->normalize_hour_minute( $hm );
 	}
 
 	/**
@@ -725,15 +727,7 @@ class Css_Tc_Punches {
 	 * @return string
 	 */
 	public function elapsed_label( $start, $end ) {
-		$start_ts = strtotime( $start );
-		$end_ts   = strtotime( $end );
-		if ( ! $start_ts || ! $end_ts || $end_ts < $start_ts ) {
-			return '00:00';
-		}
-		$seconds = $end_ts - $start_ts;
-		$hours   = (int) floor( $seconds / 3600 );
-		$minutes = (int) floor( ( $seconds % 3600 ) / 60 );
-		return sprintf( '%02d:%02d', $hours, $minutes );
+		return css_tc_addon()->time->elapsed_label( $start, $end );
 	}
 
 	/**
