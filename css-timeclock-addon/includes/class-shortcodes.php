@@ -162,7 +162,37 @@ class Css_Tc_Shortcodes {
 	}
 
 	/**
-	 * Logged-in employee times + suggest-edit dashboard.
+	 * Front-end URL of the employee timecard page.
+	 *
+	 * @param string $period_start Optional Y-m-d period start.
+	 * @return string
+	 */
+	public static function times_url( $period_start = '' ) {
+		$settings = css_tc_addon()->get_settings();
+		$page_id  = isset( $settings['employee_times_page_id'] ) ? (int) $settings['employee_times_page_id'] : 0;
+		$base     = ( $page_id && get_permalink( $page_id ) ) ? (string) get_permalink( $page_id ) : home_url( '/my-time-clock/' );
+		if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $period_start ) ) {
+			$base = add_query_arg( 'period', $period_start, $base );
+		}
+		return $base;
+	}
+
+	/**
+	 * Corrections form for the current pay period only.
+	 *
+	 * @param string $day Optional Y-m-d hash target.
+	 * @return string
+	 */
+	public static function correct_url( $day = '' ) {
+		$url = add_query_arg( 'css_tc_view', 'correct', self::times_url() );
+		if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $day ) ) {
+			$url .= '#day-' . $day;
+		}
+		return $url;
+	}
+
+	/**
+	 * Logged-in employee timecard. Corrections are limited to the open pay period.
 	 *
 	 * @param array<string,string>|string $atts Shortcode attributes.
 	 * @return string
@@ -174,7 +204,42 @@ class Css_Tc_Shortcodes {
 		$user_id   = get_current_user_id();
 		$logged_in = $user_id > 0;
 		$allowed   = $logged_in && css_tc_addon()->employees->can_view_own_times( $user_id );
-		$login_url = wp_login_url( get_permalink() ? (string) get_permalink() : home_url( '/my-time-clock/' ) );
+		$login_url = wp_login_url( self::times_url() );
+
+		$view = 'timecard';
+		if ( isset( $_GET['css_tc_view'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$requested = sanitize_key( wp_unslash( $_GET['css_tc_view'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			if ( 'correct' === $requested ) {
+				$view = 'correct';
+			}
+		}
+
+		$period_start = isset( $_GET['period'] ) ? sanitize_text_field( wp_unslash( $_GET['period'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$period       = $allowed ? css_tc_addon()->pay_periods->period_by_start( $period_start ) : null;
+		if ( $allowed && ! $period ) {
+			$period = css_tc_addon()->pay_periods->current_period();
+		}
+
+		$sheet      = null;
+		$form       = null;
+		$form_error = '';
+		$notice     = '';
+		if ( $allowed && 'correct' === $view ) {
+			$form = css_tc_addon()->timecard->form_days( $user_id );
+			$form_error = (string) get_transient( 'css_tc_period_error_' . $user_id );
+			if ( '' !== $form_error ) {
+				delete_transient( 'css_tc_period_error_' . $user_id );
+			}
+		} elseif ( $allowed && $period ) {
+			$sheet = css_tc_addon()->timecard->build( $user_id, $period );
+			if ( isset( $_GET['css_tc_notice'] ) && 'sent' === sanitize_key( wp_unslash( $_GET['css_tc_notice'] ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				$notice = __( 'Suggestions sent. A supervisor will review them before any punch changes.', 'css-timeclock-addon' );
+			}
+			$form_error = (string) get_transient( 'css_tc_period_error_' . $user_id );
+			if ( '' !== $form_error ) {
+				delete_transient( 'css_tc_period_error_' . $user_id );
+			}
+		}
 
 		ob_start();
 		include CSS_TC_ADDON_DIR . 'public/views/my-times.php';
@@ -196,49 +261,23 @@ class Css_Tc_Shortcodes {
 			array(),
 			CSS_TC_ADDON_VERSION
 		);
+		wp_enqueue_style(
+			'css-tc-timecard',
+			CSS_TC_ADDON_URL . 'public/css/timecard.css',
+			array( 'css-tc-times' ),
+			CSS_TC_ADDON_VERSION
+		);
 
 		if ( ! is_user_logged_in() || ! css_tc_addon()->employees->can_view_own_times( get_current_user_id() ) ) {
 			return;
 		}
 
 		wp_enqueue_script(
-			'css-tc-times',
-			CSS_TC_ADDON_URL . 'public/js/times.js',
+			'css-tc-timecard',
+			CSS_TC_ADDON_URL . 'public/js/timecard.js',
 			array(),
 			CSS_TC_ADDON_VERSION,
 			true
-		);
-
-		wp_localize_script(
-			'css-tc-times',
-			'cssTcTimes',
-			array(
-				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-				'nonce'   => wp_create_nonce( Css_Tc_Corrections::EMPLOYEE_NONCE ),
-				'strings' => array(
-					'loadError'    => __( 'Could not load your times. Refresh the page.', 'css-timeclock-addon' ),
-					'noShifts'     => __( 'No punches this day.', 'css-timeclock-addon' ),
-					'openShift'    => __( 'Still clocked in', 'css-timeclock-addon' ),
-					'suggest'      => __( 'Suggest edit', 'css-timeclock-addon' ),
-					'pending'      => __( 'Pending review', 'css-timeclock-addon' ),
-					'approved'     => __( 'Approved', 'css-timeclock-addon' ),
-					'rejected'     => __( 'Rejected', 'css-timeclock-addon' ),
-					'reasonLabel'  => __( 'Reason', 'css-timeclock-addon' ),
-					'clockIn'      => __( 'Clock in', 'css-timeclock-addon' ),
-					'clockOut'     => __( 'Clock out', 'css-timeclock-addon' ),
-					'nextDay'      => __( 'Clock-out is the next day', 'css-timeclock-addon' ),
-					'missing'      => __( 'I missed a punch / this day is incomplete', 'css-timeclock-addon' ),
-					'submit'       => __( 'Send suggestion', 'css-timeclock-addon' ),
-					'cancel'       => __( 'Cancel', 'css-timeclock-addon' ),
-					'sent'         => __( 'Suggestion sent. A supervisor will review it.', 'css-timeclock-addon' ),
-					'needReason'   => __( 'Please add a short reason (at least 8 characters).', 'css-timeclock-addon' ),
-					'today'        => __( 'Today', 'css-timeclock-addon' ),
-					'shiftTotal'   => __( 'Shift time', 'css-timeclock-addon' ),
-					'updatePending'=> __( 'Update pending suggestion', 'css-timeclock-addon' ),
-					'reviewNote'   => __( 'Supervisor note', 'css-timeclock-addon' ),
-					'addMissing'   => __( 'Add a missing shift', 'css-timeclock-addon' ),
-				),
-			)
 		);
 	}
 

@@ -122,6 +122,30 @@ class Css_Tc_Employees {
 	}
 
 	/**
+	 * Two-letter initials from first and last name (Cyleigh Bunn → CB).
+	 *
+	 * @param int $user_id User ID.
+	 * @return string
+	 */
+	public function initials( $user_id ) {
+		$user_id = (int) $user_id;
+		$first   = sanitize_text_field( (string) get_user_meta( $user_id, 'first_name', true ) );
+		$last    = sanitize_text_field( (string) get_user_meta( $user_id, 'last_name', true ) );
+		$letters = '';
+		if ( '' !== $first ) {
+			$letters .= function_exists( 'mb_substr' ) ? mb_substr( $first, 0, 1 ) : substr( $first, 0, 1 );
+		}
+		if ( '' !== $last ) {
+			$letters .= function_exists( 'mb_substr' ) ? mb_substr( $last, 0, 1 ) : substr( $last, 0, 1 );
+		}
+		if ( '' === $letters ) {
+			$name = $this->display_name( $user_id );
+			$letters = function_exists( 'mb_substr' ) ? mb_substr( $name, 0, 2 ) : substr( $name, 0, 2 );
+		}
+		return strtoupper( $letters );
+	}
+
+	/**
 	 * First + last for kiosk greetings.
 	 *
 	 * @param int $user_id User ID.

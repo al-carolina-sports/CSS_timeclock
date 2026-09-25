@@ -9,10 +9,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+require_once CSS_TC_ADDON_DIR . 'includes/class-time.php';
+require_once CSS_TC_ADDON_DIR . 'includes/class-pay-codes.php';
+require_once CSS_TC_ADDON_DIR . 'includes/class-pay-periods.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-employees.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-pins.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-punches.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-corrections.php';
+require_once CSS_TC_ADDON_DIR . 'includes/class-timecard.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-ajax.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-admin.php';
 require_once CSS_TC_ADDON_DIR . 'includes/class-branding.php';
@@ -29,6 +33,21 @@ class Css_Tc_Plugin {
 	 * @var Css_Tc_Plugin|null
 	 */
 	private static $instance = null;
+
+	/**
+	 * @var Css_Tc_Time
+	 */
+	public $time;
+
+	/**
+	 * @var Css_Tc_Pay_Periods
+	 */
+	public $pay_periods;
+
+	/**
+	 * @var Css_Tc_Timecard
+	 */
+	public $timecard;
 
 	/**
 	 * @var Css_Tc_Employees
@@ -61,6 +80,9 @@ class Css_Tc_Plugin {
 	}
 
 	private function __construct() {
+		$this->time        = new Css_Tc_Time();
+		$this->pay_periods = new Css_Tc_Pay_Periods();
+		$this->timecard    = new Css_Tc_Timecard();
 		$this->employees   = new Css_Tc_Employees();
 		$this->pins        = new Css_Tc_Pins();
 		$this->punches     = new Css_Tc_Punches();
@@ -94,6 +116,9 @@ class Css_Tc_Plugin {
 			'name_kiosk_page_id'      => 0,
 			'employee_times_page_id'  => 0,
 			'times_lookback_days'     => 21,
+			'pay_period_length'       => 'biweekly',
+			'pay_period_anchor'       => '2026-09-07',
+			'missed_clock_out_hours'  => 16,
 		);
 	}
 

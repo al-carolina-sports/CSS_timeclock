@@ -46,6 +46,22 @@ class Css_Tc_Admin {
 				$page,
 				array( $this, 'render_page' )
 			);
+			add_submenu_page(
+				'aio-tc-lite',
+				__( 'Timecards', 'css-timeclock-addon' ),
+				__( 'Timecards', 'css-timeclock-addon' ),
+				'edit_posts',
+				'css-tc-timecards',
+				array( $this, 'render_timecards' )
+			);
+		} else {
+			add_options_page(
+				__( 'Timecards', 'css-timeclock-addon' ),
+				__( 'Timecards', 'css-timeclock-addon' ),
+				'manage_options',
+				'css-tc-timecards',
+				array( $this, 'render_timecards' )
+			);
 		}
 	}
 
@@ -58,8 +74,26 @@ class Css_Tc_Admin {
 			$this->enqueue_aio_upsell_hide();
 		}
 
-		$is_ours = ( false !== strpos( (string) $hook, 'css-tc-addon' ) );
+		$is_timecards = ( false !== strpos( (string) $hook, 'css-tc-timecards' ) );
+		$is_ours      = $is_timecards || ( false !== strpos( (string) $hook, 'css-tc-addon' ) );
 		if ( ! $is_ours ) {
+			return;
+		}
+
+		if ( $is_timecards ) {
+			wp_enqueue_style(
+				'css-tc-timecard',
+				CSS_TC_ADDON_URL . 'public/css/timecard.css',
+				array(),
+				CSS_TC_ADDON_VERSION
+			);
+			wp_enqueue_script(
+				'css-tc-timecard',
+				CSS_TC_ADDON_URL . 'public/js/timecard.js',
+				array(),
+				CSS_TC_ADDON_VERSION,
+				true
+			);
 			return;
 		}
 
@@ -180,5 +214,69 @@ class Css_Tc_Admin {
 			: admin_url( 'admin.php?page=css-tc-addon' );
 
 		include CSS_TC_ADDON_DIR . 'admin/views/settings-page.php';
+	}
+
+	/**
+	 * SMOTC → Timecards. Any employee, read-only outside the current period.
+	 *
+	 * @return void
+	 */
+	public function render_timecards() {
+		if ( ! Css_Tc_Plugin::user_can_manage() ) {
+			wp_die( esc_html__( 'You do not have permission to view timecards.', 'css-timeclock-addon' ) );
+		}
+
+		$employees = css_tc_addon()->employees->list_for_admin();
+		usort(
+			$employees,
+			static function ( $a, $b ) {
+				return strcasecmp(
+					css_tc_addon()->employees->display_name( (int) $a->ID ),
+					css_tc_addon()->employees->display_name( (int) $b->ID )
+				);
+			}
+		);
+
+		$requested = isset( $_GET['employee'] ) ? absint( $_GET['employee'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$ids       = array();
+		foreach ( $employees as $user ) {
+			$ids[] = (int) $user->ID;
+		}
+		if ( $requested && in_array( $requested, $ids, true ) ) {
+			$user_id = $requested;
+		} elseif ( ! empty( $ids ) ) {
+			$user_id = $ids[0];
+		} else {
+			$user_id = 0;
+		}
+
+		$period_start = isset( $_GET['period'] ) ? sanitize_text_field( wp_unslash( $_GET['period'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$period       = css_tc_addon()->pay_periods->period_by_start( $period_start );
+		if ( ! $period ) {
+			$period = css_tc_addon()->pay_periods->current_period();
+		}
+
+		$sheet    = ( $user_id && $period ) ? css_tc_addon()->timecard->build( $user_id, $period ) : null;
+		$index    = array_search( $user_id, $ids, true );
+		$prev_id  = ( false !== $index && $index > 0 ) ? $ids[ $index - 1 ] : 0;
+		$next_id  = ( false !== $index && $index < count( $ids ) - 1 ) ? $ids[ $index + 1 ] : 0;
+		$periods  = css_tc_addon()->pay_periods->dropdown_periods( 6 );
+		$edit_url = admin_url( 'admin.php?page=css-tc-addon&tab=corrections' );
+
+		include CSS_TC_ADDON_DIR . 'admin/views/timecard-page.php';
+	}
+
+	/**
+	 * @param array<string,mixed> $args Query args.
+	 * @return string
+	 */
+	public static function timecards_url( $args = array() ) {
+		$base = Css_Tc_Plugin::aio_is_active()
+			? admin_url( 'admin.php?page=css-tc-timecards' )
+			: admin_url( 'options-general.php?page=css-tc-timecards' );
+		if ( ! empty( $args ) ) {
+			$base = add_query_arg( $args, $base );
+		}
+		return $base;
 	}
 }

@@ -136,7 +136,18 @@ class Css_Tc_Corrections {
 			return $limited;
 		}
 
-		$existing = $this->pending_for_day( $user_id, $parsed['work_date'] );
+		return $this->store_parsed( $user_id, $parsed );
+	}
+
+	/**
+	 * Write one already-validated suggestion. Does not rate-limit.
+	 *
+	 * @param int                 $user_id Employee.
+	 * @param array<string,mixed> $parsed  Result of parse_submission().
+	 * @return array<string,mixed>|WP_Error
+	 */
+	private function store_parsed( $user_id, $parsed ) {
+		$existing = $this->pending_match( $user_id, $parsed );
 		$title    = sprintf(
 			/* translators: 1: employee name, 2: work date */
 			__( 'Correction: %1$s — %2$s', 'css-timeclock-addon' ),
@@ -173,6 +184,156 @@ class Css_Tc_Corrections {
 
 		$post = get_post( $post_id );
 		return $this->to_public_row( $post, false );
+	}
+
+	/**
+	 * Pending suggestion for the same shift, or a specific pending post when
+	 * the line is a new shift being edited again.
+	 *
+	 * @param int                 $user_id Employee.
+	 * @param array<string,mixed> $parsed  Parsed submission.
+	 * @return WP_Post|null
+	 */
+	private function pending_match( $user_id, $parsed ) {
+		$shift_id = isset( $parsed['meta']['css_tc_shift_id'] ) ? (int) $parsed['meta']['css_tc_shift_id'] : 0;
+		if ( $shift_id > 0 ) {
+			return $this->pending_for_shift( $user_id, $shift_id );
+		}
+
+		$correction_id = isset( $parsed['correction_id'] ) ? (int) $parsed['correction_id'] : 0;
+		if ( $correction_id < 1 ) {
+			return null;
+		}
+
+		$post = get_post( $correction_id );
+		if ( ! $post || self::POST_TYPE !== $post->post_type || 'pending' !== $post->post_status ) {
+			return null;
+		}
+		if ( (int) $post->post_author !== (int) $user_id ) {
+			return null;
+		}
+		if ( (int) get_post_meta( $post->ID, 'css_tc_shift_id', true ) > 0 ) {
+			return null;
+		}
+		return $post;
+	}
+
+	/**
+	 * @param int $user_id  Employee user ID.
+	 * @param int $shift_id Shift post ID.
+	 * @return WP_Post|null
+	 */
+	public function pending_for_shift( $user_id, $shift_id ) {
+		$items = $this->query_posts(
+			array(
+				'author'         => (int) $user_id,
+				'posts_per_page' => 5,
+				'post_status'    => 'pending',
+				'meta_key'       => 'css_tc_shift_id',
+				'meta_value'     => (string) (int) $shift_id,
+			)
+		);
+
+		return ! empty( $items ) ? $items[0] : null;
+	}
+
+	/**
+	 * Pending suggestions for one employee, grouped by work date.
+	 *
+	 * @param int    $user_id Employee.
+	 * @param string $start   Y-m-d inclusive.
+	 * @param string $end     Y-m-d inclusive.
+	 * @return array<string,array<int,array<string,mixed>>>
+	 */
+	public function pending_by_date( $user_id, $start, $end ) {
+		$items = $this->query_posts(
+			array(
+				'author'         => (int) $user_id,
+				'posts_per_page' => 100,
+				'post_status'    => 'pending',
+			)
+		);
+
+		$map = array();
+		foreach ( $items as $post ) {
+			$row = $this->to_public_row( $post, false );
+			if ( ! $row ) {
+				continue;
+			}
+			$date = (string) $row['work_date'];
+			if ( $date < $start || $date > $end ) {
+				continue;
+			}
+			if ( ! isset( $map[ $date ] ) ) {
+				$map[ $date ] = array();
+			}
+			$map[ $date ][] = $row;
+		}
+
+		return $map;
+	}
+
+	/**
+	 * Submit every changed line in the current pay period.
+	 *
+	 * Validates the whole set before writing. Unchanged and blank new rows
+	 * are skipped. One rate-limit hit covers the batch.
+	 *
+	 * @param int                            $user_id Employee.
+	 * @param array<int,array<string,mixed>> $lines   Raw lines.
+	 * @return array<int,array<string,mixed>>|WP_Error
+	 */
+	public function submit_period( $user_id, $lines ) {
+		$user_id = (int) $user_id;
+		$limited = $this->assert_not_rate_limited( $user_id );
+		if ( is_wp_error( $limited ) ) {
+			return $limited;
+		}
+
+		if ( ! is_array( $lines ) ) {
+			$lines = array();
+		}
+
+		$parsed_rows = array();
+		foreach ( $lines as $line ) {
+			if ( ! is_array( $line ) ) {
+				continue;
+			}
+			$shift_id = isset( $line['shift_id'] ) ? absint( $line['shift_id'] ) : 0;
+			$in       = isset( $line['proposed_in'] ) ? trim( (string) $line['proposed_in'] ) : '';
+			$out      = isset( $line['proposed_out'] ) ? trim( (string) $line['proposed_out'] ) : '';
+			if ( $shift_id < 1 && '' === $in && '' === $out ) {
+				continue;
+			}
+
+			$parsed = $this->parse_submission( $user_id, $line );
+			if ( is_wp_error( $parsed ) ) {
+				$code = $parsed->get_error_code();
+				if ( 'css_tc_unchanged' === $code || 'css_tc_empty' === $code ) {
+					continue;
+				}
+				return $parsed;
+			}
+			$parsed_rows[] = $parsed;
+		}
+
+		if ( empty( $parsed_rows ) ) {
+			return new WP_Error(
+				'css_tc_unchanged',
+				__( 'Change a clock-in or clock-out, and add a reason, before sending.', 'css-timeclock-addon' )
+			);
+		}
+
+		$created = array();
+		foreach ( $parsed_rows as $parsed ) {
+			$stored = $this->store_parsed( $user_id, $parsed );
+			if ( is_wp_error( $stored ) ) {
+				return $stored;
+			}
+			$created[] = $stored;
+		}
+
+		return $created;
 	}
 
 	/**
@@ -265,6 +426,11 @@ class Css_Tc_Corrections {
 			return $post;
 		}
 
+		$open = $this->assert_correction_period_open( $post );
+		if ( is_wp_error( $open ) ) {
+			return $open;
+		}
+
 		$row     = $this->to_public_row( $post, true );
 		$user_id = (int) $post->post_author;
 		$punches = css_tc_addon()->punches;
@@ -336,6 +502,42 @@ class Css_Tc_Corrections {
 	}
 
 	/**
+	 * Refuse approval when the shift or the proposed times sit in a closed period.
+	 *
+	 * @param WP_Post $post Pending correction.
+	 * @return true|WP_Error
+	 */
+	private function assert_correction_period_open( $post ) {
+		$work_date = (string) get_post_meta( $post->ID, 'css_tc_work_date', true );
+		$open      = css_tc_addon()->pay_periods->assert_open_date( $work_date );
+		if ( is_wp_error( $open ) ) {
+			return $open;
+		}
+
+		$shift_id = (int) get_post_meta( $post->ID, 'css_tc_shift_id', true );
+		if ( $shift_id > 0 ) {
+			$live_in = (string) get_post_meta( $shift_id, 'employee_clock_in_time', true );
+			if ( '' !== $live_in ) {
+				$live = css_tc_addon()->pay_periods->assert_shift_times_open( $live_in, '' );
+				if ( is_wp_error( $live ) ) {
+					return $live;
+				}
+			}
+		}
+
+		$proposed_in  = (string) get_post_meta( $post->ID, 'css_tc_proposed_in', true );
+		$proposed_out = (string) get_post_meta( $post->ID, 'css_tc_proposed_out', true );
+		if ( '' !== $proposed_in ) {
+			$proposed = css_tc_addon()->pay_periods->assert_shift_times_open( $proposed_in, $proposed_out );
+			if ( is_wp_error( $proposed ) ) {
+				return $proposed;
+			}
+		}
+
+		return true;
+	}
+
+	/**
 	 * @param int $correction_id Correction post ID.
 	 * @return WP_Post|WP_Error
 	 */
@@ -362,28 +564,20 @@ class Css_Tc_Corrections {
 			return new WP_Error( 'css_tc_bad_date', __( 'Choose a valid day.', 'css-timeclock-addon' ) );
 		}
 
-		$today    = $punches->site_date();
-		$settings = css_tc_addon()->get_settings();
-		$lookback = isset( $settings['times_lookback_days'] ) ? (int) $settings['times_lookback_days'] : 21;
-		$oldest   = $punches->shift_date( $today, 1 - min( 60, max( 7, $lookback ) ) );
-		if ( $date > $today || $date < $oldest ) {
-			return new WP_Error( 'css_tc_bad_date', __( 'That day is outside the editable window.', 'css-timeclock-addon' ) );
+		$open = css_tc_addon()->pay_periods->assert_open_date( $date );
+		if ( is_wp_error( $open ) ) {
+			return $open;
 		}
 
 		$reason = $this->sanitize_note( isset( $input['reason'] ) ? $input['reason'] : '' );
-		if ( strlen( $reason ) < 8 ) {
-			return new WP_Error( 'css_tc_reason', __( 'Please add a short reason (at least 8 characters).', 'css-timeclock-addon' ) );
-		}
 
-		$shift_id      = isset( $input['shift_id'] ) ? absint( $input['shift_id'] ) : 0;
-		$missing       = ! empty( $input['missing_punch'] );
-		$out_next_day  = ! empty( $input['out_next_day'] );
-		$proposed_in   = $punches->combine_day_time( $date, isset( $input['proposed_in'] ) ? $input['proposed_in'] : '', false );
-		$proposed_out  = $punches->combine_day_time( $date, isset( $input['proposed_out'] ) ? $input['proposed_out'] : '', $out_next_day );
-		$clear_out     = empty( $input['proposed_out'] ) && ! empty( $input['clear_out'] );
-
-		$original_in  = '';
-		$original_out = '';
+		$shift_id       = isset( $input['shift_id'] ) ? absint( $input['shift_id'] ) : 0;
+		$correction_id  = isset( $input['correction_id'] ) ? absint( $input['correction_id'] ) : 0;
+		$missing        = ! empty( $input['missing_punch'] );
+		$out_next_day   = ! empty( $input['out_next_day'] );
+		$clear_out      = empty( $input['proposed_out'] ) && ! empty( $input['clear_out'] );
+		$original_in    = '';
+		$original_out   = '';
 
 		if ( $shift_id > 0 ) {
 			$post = get_post( $shift_id );
@@ -392,7 +586,24 @@ class Css_Tc_Corrections {
 			}
 			$original_in  = (string) get_post_meta( $shift_id, 'employee_clock_in_time', true );
 			$original_out = (string) get_post_meta( $shift_id, 'employee_clock_out_time', true );
-		} elseif ( ! $missing && '' === $proposed_in ) {
+			$live_open    = css_tc_addon()->pay_periods->assert_shift_times_open( $original_in, '' );
+			if ( '' !== $original_in && is_wp_error( $live_open ) ) {
+				return $live_open;
+			}
+		}
+
+		$proposed_in  = $punches->combine_day_time( $date, isset( $input['proposed_in'] ) ? $input['proposed_in'] : '', false, $original_in );
+		$proposed_out = $punches->combine_day_time( $date, isset( $input['proposed_out'] ) ? $input['proposed_out'] : '', $out_next_day, $original_out );
+
+		// Blank inputs on an existing shift mean "leave this time", not "clear it".
+		if ( $shift_id > 0 && '' === $proposed_in && '' !== $original_in ) {
+			$proposed_in = $original_in;
+		}
+		if ( $shift_id > 0 && '' === $proposed_out && '' !== $original_out && ! $clear_out ) {
+			$proposed_out = $original_out;
+		}
+
+		if ( $shift_id < 1 && ! $missing && '' === $proposed_in ) {
 			return new WP_Error( 'css_tc_need_in', __( 'Add a clock-in time, or mark this as a missing punch.', 'css-timeclock-addon' ) );
 		}
 
@@ -408,13 +619,29 @@ class Css_Tc_Corrections {
 			return new WP_Error( 'css_tc_unchanged', __( 'Change a time or note a missing punch before sending this.', 'css-timeclock-addon' ) );
 		}
 
+		if ( strlen( $reason ) < 8 ) {
+			return new WP_Error( 'css_tc_reason', __( 'Please add a short reason (at least 8 characters).', 'css-timeclock-addon' ) );
+		}
+
+		if ( '' !== $proposed_in ) {
+			$proposed_open = css_tc_addon()->pay_periods->assert_shift_times_open( $proposed_in, $proposed_out );
+			if ( is_wp_error( $proposed_open ) ) {
+				return $proposed_open;
+			}
+			$in_day = css_tc_addon()->time->site_date_of( $proposed_in );
+			if ( $in_day !== $date ) {
+				return new WP_Error( 'css_tc_bad_date', __( 'Clock-in has to stay on the day you are correcting.', 'css-timeclock-addon' ) );
+			}
+		}
+
 		if ( $shift_id < 1 && '' === $proposed_in ) {
 			return new WP_Error( 'css_tc_need_in', __( 'A missing punch still needs a proposed clock-in time so a supervisor can apply it.', 'css-timeclock-addon' ) );
 		}
 
 		return array(
-			'work_date' => $date,
-			'meta'      => array(
+			'work_date'     => $date,
+			'correction_id' => $correction_id,
+			'meta'          => array(
 				'css_tc_work_date'    => $date,
 				'css_tc_shift_id'     => $shift_id,
 				'css_tc_original_in'  => $original_in,
@@ -462,6 +689,8 @@ class Css_Tc_Corrections {
 			'proposed_out'    => $proposed_out ? $punches->format_time( $proposed_out ) : '',
 			'proposed_in_hm'  => $proposed_in ? $punches->format_hour_minute( $proposed_in ) : '',
 			'proposed_out_hm' => $proposed_out ? $punches->format_hour_minute( $proposed_out ) : '',
+			'proposed_in_hms' => $proposed_in ? css_tc_addon()->time->site_hms( $proposed_in ) : '',
+			'proposed_out_hms'=> $proposed_out ? css_tc_addon()->time->site_hms( $proposed_out ) : '',
 			'review_note'     => (string) get_post_meta( $post->ID, 'css_tc_review_note', true ),
 			'reviewed_at'     => $reviewed_at ? $punches->format_time( $reviewed_at ) : '',
 			'submitted_at'    => $punches->format_time( $post->post_date ),
